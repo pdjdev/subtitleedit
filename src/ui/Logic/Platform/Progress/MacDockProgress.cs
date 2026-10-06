@@ -1,8 +1,6 @@
 using System;
 using System.Diagnostics;
-using System.IO;
 using System.Runtime.InteropServices;
-using Avalonia.Platform;
 using SkiaSharp;
 
 namespace Nikse.SubtitleEdit.Logic.Platform.Progress;
@@ -10,11 +8,13 @@ namespace Nikse.SubtitleEdit.Logic.Platform.Progress;
 internal sealed class MacDockProgress : IPlatformProgress
 {
     private const int NSImageScaleProportionallyUpOrDown = 3;
+    private const int NSViewWidthSizable = 2;
+    private const int NSViewHeightSizable = 16;
 
     private IntPtr _dockTile;
     private IntPtr _originalContentView;
     private IntPtr _imageView;
-    private SKBitmap? _icon;
+    private IntPtr _progressView;
     private int? _percentage;
     private bool _unavailable;
 
@@ -32,7 +32,7 @@ internal sealed class MacDockProgress : IPlatformProgress
             }
 
             EnsureDockTile();
-            var png = Render(_icon!, value.Value);
+            var png = Render(value.Value);
             var allocatedData = Send(Class("NSData"), "alloc");
             var data = SendBytes(allocatedData, Selector("initWithBytes:length:"), png, (nuint)png.Length);
             var image = IntPtr.Zero;
@@ -42,7 +42,7 @@ internal sealed class MacDockProgress : IPlatformProgress
                 image = Send(allocatedImage, "initWithData:", data);
                 if (image == IntPtr.Zero) throw new InvalidOperationException("Cannot create Dock progress image.");
 
-                Send(_imageView, "setImage:", image);
+                Send(_progressView, "setImage:", image);
                 Send(_dockTile, "setContentView:", _imageView);
                 Send(_dockTile, "display");
                 _percentage = value;
@@ -54,7 +54,7 @@ internal sealed class MacDockProgress : IPlatformProgress
             }
         }
         catch (Exception exception) when (exception is DllNotFoundException or EntryPointNotFoundException
-            or InvalidOperationException or IOException or NotSupportedException)
+            or InvalidOperationException or NotSupportedException)
         {
             Debug.WriteLine($"Dock progress unavailable: {exception.Message}");
             Dispose();
@@ -64,9 +64,6 @@ internal sealed class MacDockProgress : IPlatformProgress
     private void EnsureDockTile()
     {
         if (_imageView != IntPtr.Zero) return;
-
-        using var stream = AssetLoader.Open(new Uri("avares://SubtitleEdit/Assets/SE.png"));
-        _icon = SKBitmap.Decode(stream) ?? throw new InvalidOperationException("Cannot load Dock icon.");
 
         var application = Send(Class("NSApplication"), "sharedApplication");
         _dockTile = Send(application, "dockTile");
@@ -79,19 +76,31 @@ internal sealed class MacDockProgress : IPlatformProgress
         var contentView = Send(_dockTile, "contentView");
         _originalContentView = Send(contentView, "retain");
 
-        var frame = new NativeRect { Width = size.Width, Height = size.Height };
-        var allocatedView = Send(Class("NSImageView"), "alloc");
-        _imageView = SendRect(allocatedView, Selector("initWithFrame:"), frame);
-        if (_imageView == IntPtr.Zero) throw new InvalidOperationException("Cannot create Dock content view.");
-        Send(_imageView, "setImageScaling:", new IntPtr(NSImageScaleProportionallyUpOrDown));
+        var icon = Send(application, "applicationIconImage");
+        if (icon == IntPtr.Zero) throw new InvalidOperationException("No application Dock icon.");
+
+        _imageView = CreateImageView(size);
+        Send(_imageView, "setImage:", icon);
+        _progressView = CreateImageView(size);
+        Send(_imageView, "addSubview:", _progressView);
     }
 
-    internal static byte[] Render(SKBitmap icon, int percentage)
+    private static IntPtr CreateImageView(NativeSize size)
+    {
+        var frame = new NativeRect { Width = size.Width, Height = size.Height };
+        var allocatedView = Send(Class("NSImageView"), "alloc");
+        var view = SendRect(allocatedView, Selector("initWithFrame:"), frame);
+        if (view == IntPtr.Zero) throw new InvalidOperationException("Cannot create Dock content view.");
+        Send(view, "setImageScaling:", new IntPtr(NSImageScaleProportionallyUpOrDown));
+        Send(view, "setAutoresizingMask:", new IntPtr(NSViewWidthSizable | NSViewHeightSizable));
+        return view;
+    }
+
+    internal static byte[] Render(int percentage)
     {
         using var bitmap = new SKBitmap(256, 256);
         using var canvas = new SKCanvas(bitmap);
         canvas.Clear(SKColors.Transparent);
-        canvas.DrawBitmap(icon, new SKRect(0, 0, 256, 256));
         using var paint = new SKPaint { IsAntialias = true, Color = new SKColor(0, 0, 0, 220) };
         canvas.DrawRoundRect(new SKRect(44, 186, 212, 210), 12, 12, paint);
         paint.Color = SKColors.White;
@@ -114,11 +123,10 @@ internal sealed class MacDockProgress : IPlatformProgress
     public void Dispose()
     {
         RestoreIcon();
+        Send(_progressView, "release");
         Send(_imageView, "release");
         Send(_originalContentView, "release");
-        _imageView = _originalContentView = _dockTile = IntPtr.Zero;
-        _icon?.Dispose();
-        _icon = null;
+        _progressView = _imageView = _originalContentView = _dockTile = IntPtr.Zero;
         _unavailable = true;
     }
 
