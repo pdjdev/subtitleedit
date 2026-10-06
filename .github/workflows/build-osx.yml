@@ -1,0 +1,236 @@
+name: Build macOS DMG
+'on':
+  push:
+    branches:
+    - build/osx
+  workflow_dispatch: {}
+permissions:
+  contents: read
+env:
+  IINA_VERSION: v1.4.4
+  IINA_SHA256: dd0fc0bd4b37fb57a1c8d30d6e3201b3a64bafd29959fe56953964613237beb1
+  SIGNING_AVAILABLE: 'false'
+jobs:
+  build-macos:
+    runs-on: macos-15-intel
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - arch: x64
+          arch_label: x64
+          runtime: osx-x64
+          ffmpeg_url: https://www.osxexperts.net/ffmpeg80intel.zip
+          voikko_url: https://github.com/SubtitleEdit/support-files/releases/download/voikko-4.3-fi-2024-06/libvoikko-4.3.3-macos-x64.zip
+          voikko_sha256: fbd458122536708192a4f56f98f34d28a399547e628ce17d14d4cc6534b7a62b
+          ffmpeg_sha256: 2d24d22db78c87f394a5822867acd5c5dc5e762cd261a44bd26923f3a5af3e07
+          dmg_format: UDZO
+          expected_arch: x86_64
+    steps:
+    - uses: actions/checkout@v5
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: 10.0.x
+    - name: Extract version from Se.cs
+      run: |
+        set -e
+        line=$(grep -E 'public[[:space:]]+static[[:space:]]+string[[:space:]]+Version[[:space:]]*\{' src/ui/Logic/Config/Se.cs)
+        version_string=$(printf '%s' "$line" | sed -E 's/.*"v([^"]+)".*/\1/')
+        numeric_part="${version_string%%-*}"
+        suffix=""
+        case "$version_string" in
+          *-*) suffix="${version_string#*-}" ;;
+        esac
+        dot_count=$(printf '%s' "$numeric_part" | tr -cd '.' | wc -c | tr -d ' ')
+        case "$dot_count" in
+          0) numeric_part="${numeric_part}.0.0" ;;
+          1) numeric_part="${numeric_part}.0" ;;
+        esac
+        revision=$(printf '%s' "$suffix" | grep -oE '[0-9]+$' || true)
+        revision=${revision:-0}
+        app_ver_full="${numeric_part}.${revision}"
+        echo "APP_VER_DISPLAY=$version_string" >> "$GITHUB_ENV"
+        echo "APP_VER_FULL=$app_ver_full" >> "$GITHUB_ENV"
+        echo "APP_VER_DISPLAY=$version_string"
+        echo "APP_VER_FULL=$app_ver_full"
+    - name: Restore dependencies
+      run: dotnet restore src/ui/UI.csproj
+    - name: Build
+      run: dotnet build src/ui/UI.csproj --configuration Release --no-restore
+    - name: Download + verify static ffmpeg (${{ matrix.arch }})
+      run: |
+        set -e
+        curl -fL -o ffmpeg.zip "${{ matrix.ffmpeg_url }}"
+        echo "${{ matrix.ffmpeg_sha256 }}  ffmpeg.zip" | shasum -a 256 -c -
+        mkdir -p ffmpeg-temp
+        unzip -o ffmpeg.zip -d ffmpeg-temp
+        rm ffmpeg.zip
+        if [ ! -f ffmpeg-temp/ffmpeg ]; then
+          found=$(find ffmpeg-temp -maxdepth 3 -type f -name ffmpeg | head -1)
+          [ -n "$found" ] && mv "$found" ffmpeg-temp/ffmpeg
+        fi
+        chmod +x ffmpeg-temp/ffmpeg
+        file ffmpeg-temp/ffmpeg
+        # Arch sanity: fail loudly if osxexperts ever serves a wrong-arch or
+        # universal binary. `lipo -archs` returns space-separated arch names;
+        # we require an exact single-arch match (a universal "x86_64 arm64"
+        # would not equal "x86_64" and would correctly fail).
+        archs=$(lipo -archs ffmpeg-temp/ffmpeg)
+        if [ "$archs" != "${{ matrix.expected_arch }}" ]; then
+          echo "ERROR: ffmpeg binary archs are '$archs', expected exactly '${{ matrix.expected_arch }}'"
+          exit 1
+        fi
+    - name: Download + verify + extract libmpv from IINA
+      run: |
+        set -e
+        curl -fL -o iina.dmg "https://github.com/iina/iina/releases/download/${IINA_VERSION}/IINA.${IINA_VERSION}.dmg"
+        echo "${IINA_SHA256}  iina.dmg" | shasum -a 256 -c -
+        hdiutil attach iina.dmg -nobrowse -readonly -mountpoint ./iina-mnt
+        mkdir -p libmpv-temp
+        # Copy every bundled dylib except Swift runtime libs (IINA itself is
+        # Swift; libmpv + its C deps don't link Swift, so these are dead weight).
+        for dylib in ./iina-mnt/IINA.app/Contents/Frameworks/*.dylib; do
+          name=$(basename "$dylib")
+          case "$name" in
+            libswift_*) continue ;;
+          esac
+          cp -L "$dylib" "./libmpv-temp/$name"
+        done
+        hdiutil detach ./iina-mnt
+        rm -f iina.dmg
+        # Sanity: assert libmpv landed. Catches a future IINA layout change
+        # that would otherwise produce an empty Frameworks/ + broken DMG.
+        [ -f libmpv-temp/libmpv.2.dylib ] || {
+          echo "ERROR: libmpv.2.dylib not extracted from IINA - did the bundle layout change?"; exit 1;
+        }
+        echo "Extracted $(ls libmpv-temp | wc -l) dylibs ($(du -sh libmpv-temp | cut -f1))"
+    - name: Download + verify libvoikko + voikko-fi dictionary (${{ matrix.arch }})
+      run: |
+        set -e
+        curl -fL -o libvoikko.zip "${{ matrix.voikko_url }}"
+        echo "${{ matrix.voikko_sha256 }}  libvoikko.zip" | shasum -a 256 -c -
+        unzip -o libvoikko.zip -d libmpv-temp
+        rm libvoikko.zip
+        archs=$(lipo -archs libmpv-temp/libvoikko.1.dylib)
+        if [ "$archs" != "${{ matrix.expected_arch }}" ]; then
+          echo "ERROR: libvoikko archs are '$archs', expected exactly '${{ matrix.expected_arch }}'"
+          exit 1
+        fi
+        curl -fL -o voikko-dict.zip "https://github.com/SubtitleEdit/support-files/releases/download/voikko-4.3-fi-2024-06/dict.zip"
+        echo "98f26bb67e08288910fbf1aa92521f28bee79538ba86aefa267713333e7fa537  voikko-dict.zip" | shasum -a 256 -c -
+        mkdir -p voikko-dict-temp
+        unzip -o voikko-dict.zip -d voikko-dict-temp
+        rm voikko-dict.zip
+        [ -f voikko-dict-temp/5/mor-standard/mor.vfst ] || { echo "ERROR: voikko dictionary layout changed"; exit 1; }
+    - name: Publish macOS app (${{ matrix.arch }})
+      run: |
+        set -e
+        dotnet publish src/ui/UI.csproj -c Release -r ${{ matrix.runtime }} --self-contained true \
+          -p:PublishSingleFile=true \
+          -p:DebugSymbols=false \
+          -p:DebugType=none \
+          -p:Version="$APP_VER_FULL" \
+          -p:FileVersion="$APP_VER_FULL" \
+          -p:InformationalVersion="$APP_VER_DISPLAY" \
+          -o ./publish/macos-${{ matrix.arch }}
+        find ./publish/macos-${{ matrix.arch }} -name "*.pdb" -delete
+        rm -f ./publish/macos-${{ matrix.arch }}/libse.xml
+        # Arch sanity on the cross-published SE executable (lipo: exact match).
+        file ./publish/macos-${{ matrix.arch }}/SubtitleEdit
+        archs=$(lipo -archs ./publish/macos-${{ matrix.arch }}/SubtitleEdit)
+        if [ "$archs" != "${{ matrix.expected_arch }}" ]; then
+          echo "ERROR: SubtitleEdit binary archs are '$archs', expected exactly '${{ matrix.expected_arch }}'"
+          exit 1
+        fi
+    - name: Update Info.plist with version from Se.cs
+      run: |
+        chmod +x ./installer/macBundle/update-plist-version.sh
+        ./installer/macBundle/update-plist-version.sh
+    - name: Assemble and package DMG (${{ matrix.arch }})
+      run: |
+        set -e
+        app="./SubtitleEdit-${{ matrix.arch_label }}.app"
+        cp -R "./installer/macBundle/SubtitleEdit.app" "$app"
+
+        # .gitkeep only exists so git tracks the empty Contents/MacOS folder.
+        # codesign treats every file in MacOS/ as code, so leaving it in place
+        # makes `codesign --verify --deep --strict` fail the whole bundle with
+        # "code object is not signed at all". Unsigned builds never hit this,
+        # because they strip the signature instead of verifying it.
+        # .DS_Store can arrive the same way and is unsignable for the same reason.
+        find "$app" \( -name ".gitkeep" -o -name ".DS_Store" \) -delete
+
+        cp "./publish/macos-${{ matrix.arch }}/SubtitleEdit" "$app/Contents/MacOS/"
+        cp "./publish/macos-${{ matrix.arch }}/"*.dylib "$app/Contents/MacOS/" 2>/dev/null || true
+        chmod +x "$app/Contents/MacOS/SubtitleEdit"
+        rm -rf "./publish/macos-${{ matrix.arch }}"
+
+        cp "./ffmpeg-temp/ffmpeg" "$app/Contents/MacOS/"
+        chmod +x "$app/Contents/MacOS/ffmpeg"
+        rm -rf "./ffmpeg-temp"
+
+        mkdir -p "$app/Contents/Frameworks"
+        cp "./libmpv-temp/"*.dylib "$app/Contents/Frameworks/"
+        chmod -R 755 "$app/Contents/Frameworks/"
+        rm -rf "./libmpv-temp"
+
+        mkdir -p "$app/Contents/Resources/voikko"
+        cp -R "./voikko-dict-temp/5" "$app/Contents/Resources/voikko/"
+        rm -rf "./voikko-dict-temp"
+
+        # Point the SE executable at the bundled Frameworks for @rpath resolution.
+        # The dylibs themselves already use @rpath/* internally (IINA's CI fixed
+        # them), so no further install_name_tool work is needed on the libs.
+        executable="$app/Contents/MacOS/SubtitleEdit"
+        if ! otool -l "$executable" | grep -q "@executable_path/../Frameworks"; then
+          install_name_tool -add_rpath "@executable_path/../Frameworks" "$executable" || true
+        fi
+
+        codesign --remove-signature "$app" 2>/dev/null || true
+
+        dmg_dir="./dmg-temp-${{ matrix.arch }}"
+        dmg_out="./SubtitleEdit-macOS-${{ matrix.arch_label }}.dmg"
+        mkdir -p "$dmg_dir"
+        cp -R "$app" "$dmg_dir/Subtitle Edit.app"
+        rm -rf "$app"
+
+        # Ship the project's own MIT terms next to the existing third-party bundle so
+        # the DMG carries both (issue #11278).
+        cp "./LICENSE" "$dmg_dir/LICENSE"
+        cp "./installer/macBundle/THIRD_PARTY_LICENSES.txt" "$dmg_dir/THIRD_PARTY_LICENSES.txt"
+
+        if [ "$SIGNING_AVAILABLE" != "true" ]; then
+          cp "./installer/macBundle/README-macOS.txt" "$dmg_dir/README-macOS.txt"
+          cp "./installer/macBundle/fix-unsigned-app.sh" "$dmg_dir/fix-unsigned-app.sh"
+          chmod +x "$dmg_dir/fix-unsigned-app.sh"
+        fi
+
+        ln -s /Applications "$dmg_dir/Applications"
+
+        # `hdiutil create` is flaky on hosted macOS runners: a freshly written
+        # source folder can briefly read as "Resource busy" while mds/Spotlight
+        # is still touching it. Sync, then retry a few times before giving up.
+        sync
+        attempts=0
+        until hdiutil create -volname "SubtitleEdit ${{ matrix.arch_label }}" -srcfolder "$dmg_dir" -ov -format ${{ matrix.dmg_format }} "$dmg_out"; do
+          attempts=$((attempts + 1))
+          if [ "$attempts" -ge 3 ]; then
+            echo "::error::hdiutil create failed after $attempts attempts"
+            exit 1
+          fi
+          echo "hdiutil create failed (attempt $attempts), retrying in 5s..."
+          sleep 5
+        done
+
+
+        rm -rf "$dmg_dir"
+    - name: Upload macOS DMG
+      uses: actions/upload-artifact@v5
+      with:
+        name: SubtitleEdit-macOS-Intel
+        path: ./SubtitleEdit-macOS-${{ matrix.arch_label }}.dmg
+        overwrite: true
+        retention-days: 7
+        if-no-files-found: error
+    timeout-minutes: 45
