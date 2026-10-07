@@ -19,6 +19,8 @@ jobs:
   # because the flatpak container image does not ship the .NET SDK.
   regenerate-nuget-sources:
     runs-on: ubuntu-latest
+    outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
     env:
       # The runtime version the flatpak org.freedesktop.Sdk.Extension.dotnet10//24.08
       # extension ships. generate-nuget-sources.sh pins the pre-fetched shared-framework
@@ -31,6 +33,10 @@ jobs:
       - uses: actions/checkout@v5
         with:
           ref: ${{ inputs.source_ref || 'feat/platform-progress' }}
+
+      - name: Resolve source commit
+        id: source
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Set up .NET SDK
         uses: actions/setup-dotnet@v4
@@ -69,7 +75,11 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ inputs.source_ref || 'feat/platform-progress' }}
+          ref: ${{ needs.regenerate-nuget-sources.outputs.source_sha }}
+
+      - name: Use uchardet source mirror for CI
+        run: |
+          sed -i 's#https://www.freedesktop.org/software/uchardet/releases/uchardet-0.0.8.tar.xz#https://ftp2.osuosl.org/pub/blfs/12.4/u/uchardet-0.0.8.tar.xz#' installer/flatpak/dk.nikse.subtitleedit.yaml
 
       - name: Download regenerated nuget-sources.json
         uses: actions/download-artifact@v5
@@ -85,7 +95,7 @@ jobs:
         with:
           bundle: SubtitleEdit-linux-x64.flatpak
           manifest-path: installer/flatpak/dk.nikse.subtitleedit.yaml
-          cache-key: flatpak-builder-${{ github.sha }}
+          cache-key: flatpak-builder-${{ needs.regenerate-nuget-sources.outputs.source_sha }}
           arch: x86_64
 
       - name: Upload flatpak bundle artifact
