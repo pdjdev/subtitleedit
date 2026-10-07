@@ -1,13 +1,16 @@
 name: Build Flatpak
 
 on:
+  push:
+    branches:
+      - build/flatpak
   workflow_dispatch:
     inputs:
-      create_release:
-        description: 'Upload bundle as release asset'
+      source_ref:
+        description: 'Branch or ref to build'
         required: false
-        default: false
-        type: boolean
+        default: 'feat/platform-progress'
+        type: string
 
 jobs:
   # Regenerate nuget-sources.json from the current UI.csproj so that the
@@ -26,6 +29,8 @@ jobs:
       DOTNET_RUNTIME_VERSION: '10.0.8'
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.source_ref || 'feat/platform-progress' }}
 
       - name: Set up .NET SDK
         uses: actions/setup-dotnet@v4
@@ -63,6 +68,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.source_ref || 'feat/platform-progress' }}
 
       - name: Download regenerated nuget-sources.json
         uses: actions/download-artifact@v5
