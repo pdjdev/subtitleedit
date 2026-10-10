@@ -7,6 +7,7 @@ using Nikse.SubtitleEdit.Core.Common;
 using Nikse.SubtitleEdit.Features.Main;
 using Nikse.SubtitleEdit.Features.Main.MainHelpers;
 using Nikse.SubtitleEdit.Logic;
+using Nikse.SubtitleEdit.Logic.Config;
 using Nikse.SubtitleEdit.Logic.UndoRedo;
 using System.Reflection;
 
@@ -135,6 +136,52 @@ public class MainUndoOriginalTests : IDisposable
         Assert.False(vm.ShowColumnOriginalText);
         Assert.Empty(GetOriginalFileName(vm));
         Assert.Empty(GetOriginalSubtitle(vm).Paragraphs);
+    }
+
+    [AvaloniaTheory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task WorkingRetimeDeleteUndo_PreservesOriginalTimeCodes(bool isReadOnly)
+    {
+        var (window, vm) = CreateMainViewModel();
+        AddLine(vm, "Working", 1000, 10000);
+        SetPrivateField(vm, "_changeSubtitleHash", vm.GetFastHash());
+        var undoRedo = GetUndoRedoManager(vm);
+        undoRedo.Do(vm.MakeUndoRedoObject("loaded"));
+
+        var original = new Subtitle();
+        original.Paragraphs.Add(new Paragraph("Original", 1000, 10000));
+        InvokeImportOriginalSubtitle(vm, "original.srt", original, match: null, isReadOnly: isReadOnly);
+        await SettleAsync(window);
+
+        vm.Subtitles[0].StartTime = TimeSpan.FromSeconds(2);
+        if (!isReadOnly)
+        {
+            Assert.Equal(1000, Assert.Single(vm.GetUpdateSubtitleOriginal().Paragraphs).StartTime.TotalMilliseconds);
+        }
+
+        undoRedo.Do(vm.MakeUndoRedoObject("retimed"));
+        var promptBeforeDelete = Se.Settings.General.PromptBeforeDelete;
+        try
+        {
+            Se.Settings.General.PromptBeforeDelete = false;
+            vm.SelectAndScrollToSubtitle(vm.Subtitles[0]);
+            await SettleAsync(window);
+            await vm.DeleteSelectedLinesCommand.ExecuteAsync(null);
+
+            vm.UndoCommand.Execute(null);
+            await SettleAsync(window);
+
+            Assert.Equal(2000, Assert.Single(vm.Subtitles).StartTime.TotalMilliseconds);
+            var reference = Assert.Single(GetOriginalSubtitle(vm).Paragraphs);
+            Assert.Equal(1000, reference.StartTime.TotalMilliseconds);
+            Assert.Equal(10000, reference.EndTime.TotalMilliseconds);
+            Assert.Equal("Original", reference.Text);
+        }
+        finally
+        {
+            Se.Settings.General.PromptBeforeDelete = promptBeforeDelete;
+        }
     }
 
     /// <summary>
