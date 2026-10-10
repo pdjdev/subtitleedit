@@ -3876,14 +3876,13 @@ public partial class MainViewModel :
     }
 
     /// <summary>
-    /// The original's lines by id, for <see cref="ToOriginalParagraph"/> - empty unless the
-    /// original's non-matching lines are on screen (the only mode where a row and its original line
-    /// can have different time codes).
+    /// The original's lines by id, for <see cref="ToOriginalParagraph"/>. Even in 1:1
+    /// mode, working time codes may diverge from the original's.
     /// </summary>
     private Dictionary<Guid, Paragraph> GetOriginalLinesById()
     {
         var linesById = new Dictionary<Guid, Paragraph>();
-        if (!IsShowingOriginalNonMatchingLines || _subtitleOriginal == null)
+        if (_subtitleOriginal == null)
         {
             return linesById;
         }
@@ -23952,6 +23951,8 @@ public partial class MainViewModel :
             SubtitleFileNameOriginal = _subtitleFileNameOriginal,
             SubtitleHeaderOriginal = _subtitleOriginal?.Header,
             SubtitleFooterOriginal = _subtitleOriginal?.Footer,
+            SubtitleOriginal = _subtitleOriginal is { Paragraphs.Count: > 0 }
+                ? new Subtitle(_subtitleOriginal, generateNewId: false) : null,
             IsOriginalLoaded = _subtitleOriginal is { Paragraphs.Count: > 0 },
             ShowColumnOriginalText = ShowColumnOriginalText,
             IsOriginalReadOnly = IsOriginalReadOnly,
@@ -24020,11 +24021,8 @@ public partial class MainViewModel :
 
     /// <summary>
     /// Puts the original back the way the snapshot had it: loaded or not, shown or hidden, read-only
-    /// or editable, with or without its display-only rows. The rows are the working text and were
-    /// restored already, so the original subtitle is rebuilt from them rather than snapshotted -
-    /// the same way every save and tool rebuilds it. Before this only the original's file name,
-    /// header and footer came back, so undoing past "open original" left an original column and
-    /// edit box with nothing behind them (#14634).
+    /// or editable, with or without its display-only rows. Restore the independent original
+    /// subtitle rather than rebuilding its time codes from the working rows.
     /// </summary>
     private void RestoreOriginalState(UndoRedoItem undoRedoObject)
     {
@@ -24032,17 +24030,9 @@ public partial class MainViewModel :
         IsShowingOriginalNonMatchingLines = undoRedoObject.IsShowingOriginalNonMatchingLines;
         IsEditOriginalMode = undoRedoObject.IsEditOriginalMode;
 
-        if (undoRedoObject.IsOriginalLoaded)
+        if (undoRedoObject.IsOriginalLoaded && undoRedoObject.SubtitleOriginal is { } original)
         {
-            _subtitleOriginal ??= new Subtitle();
-            if (undoRedoObject.SubtitleOriginalFormat != null)
-            {
-                _subtitleOriginal.OriginalFormat = undoRedoObject.SubtitleOriginalFormat;
-            }
-
-            // Rebuild after the mode flags above: with the non-matching lines shown, the display-only
-            // rows are original lines and the working rows without a counterpart are not.
-            GetUpdateSubtitleOriginal();
+            _subtitleOriginal = new Subtitle(original, generateNewId: false);
         }
         else
         {

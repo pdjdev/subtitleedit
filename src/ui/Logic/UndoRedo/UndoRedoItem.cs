@@ -1,4 +1,5 @@
-﻿using Nikse.SubtitleEdit.Core.SubtitleFormats;
+﻿using Nikse.SubtitleEdit.Core.Common;
+using Nikse.SubtitleEdit.Core.SubtitleFormats;
 using Nikse.SubtitleEdit.Features.Main;
 using System;
 using System.Linq;
@@ -21,6 +22,8 @@ public class UndoRedoItem
     public string? SubtitleFileNameOriginal { get; set; }
     public string? SubtitleHeaderOriginal { get; set; }
     public string? SubtitleFooterOriginal { get; set; }
+    // Rows only store the working time codes. Keep the original's independent cues for undo/redo.
+    public Subtitle? SubtitleOriginal { get; set; }
 
     // The rest of the original's state. The rows carry the original text, but not whether an
     // original is loaded at all, how it is shown, or whether it may be edited - so undoing past
@@ -83,6 +86,8 @@ public class UndoRedoItem
             SubtitleFileNameOriginal = item.SubtitleFileNameOriginal,
             SubtitleHeaderOriginal = item.SubtitleHeaderOriginal,
             SubtitleFooterOriginal = item.SubtitleFooterOriginal,
+            // Snapshots are not edited; RestoreOriginalState makes a working copy.
+            SubtitleOriginal = item.SubtitleOriginal,
             IsOriginalLoaded = item.IsOriginalLoaded,
             ShowColumnOriginalText = item.ShowColumnOriginalText,
             IsOriginalReadOnly = item.IsOriginalReadOnly,
