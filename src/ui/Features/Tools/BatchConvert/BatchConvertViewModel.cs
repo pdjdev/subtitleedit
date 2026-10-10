@@ -2277,6 +2277,21 @@ public partial class BatchConvertViewModel : ObservableObject, IClosingCleanup
                 return; // cancelled during the scan - add nothing
             }
 
+            var videoFiles = scanned.Where(IsScanFolderVideoFile).ToList();
+            if (videoFiles.Count > 0)
+            {
+                var includeVideoFiles = await AskIncludeScannedVideoFilesAsync(videoFiles.Count);
+                if (includeVideoFiles == null)
+                {
+                    return; // cancelled - add nothing
+                }
+
+                if (includeVideoFiles == false)
+                {
+                    scanned.RemoveAll(IsScanFolderVideoFile);
+                }
+            }
+
             allFileNames.AddRange(scanned);
         }
 
@@ -2286,6 +2301,68 @@ public partial class BatchConvertViewModel : ObservableObject, IClosingCleanup
         }
 
         await AddFilesAsync(allFileNames);
+    }
+
+    /// <summary>
+    /// Whether video files found by a folder scan should be added (their embedded subtitle tracks),
+    /// following the "Video files when adding a folder" setting - asks when it is "Ask" (#15742).
+    /// Returns null when the prompt was cancelled.
+    /// </summary>
+    private async Task<bool?> AskIncludeScannedVideoFilesAsync(int videoFileCount)
+    {
+        var mode = Se.Settings.Tools.BatchConvert.ScanFolderVideoFiles;
+        if (mode == SeBatchConvert.ScanFolderVideoFilesInclude)
+        {
+            return true;
+        }
+
+        if (mode == SeBatchConvert.ScanFolderVideoFilesSkip || Window == null)
+        {
+            return false;
+        }
+
+        var (choice, doNotAskAgain) = await MessageBox.ShowWithDoNotAskAgain(
+            Window,
+            Se.Language.Tools.BatchConvert.Title,
+            string.Format(Se.Language.Tools.BatchConvert.FolderContainsXVideoFiles, videoFileCount),
+            Se.Language.Tools.BatchConvert.DoNotAskAgainVideoFiles,
+            MessageBoxButtons.Cancel,
+            MessageBoxIcon.Question,
+            custom1: Se.Language.Tools.BatchConvert.SkipVideoFiles,
+            custom2: Se.Language.Tools.BatchConvert.AddVideoFiles);
+
+        if (choice != MessageBoxResult.Custom1 && choice != MessageBoxResult.Custom2)
+        {
+            return null;
+        }
+
+        var include = choice == MessageBoxResult.Custom2;
+        if (doNotAskAgain)
+        {
+            Se.Settings.Tools.BatchConvert.ScanFolderVideoFiles = include
+                ? SeBatchConvert.ScanFolderVideoFilesInclude
+                : SeBatchConvert.ScanFolderVideoFilesSkip;
+            Se.SaveSettings();
+        }
+
+        return include;
+    }
+
+    private static readonly HashSet<string> ScanFolderVideoExtensions = MakeScanFolderVideoExtensions();
+
+    // The extensions the folder scan only takes because of includeVideoFiles - minus .sup, which
+    // is a subtitle file (Blu-ray/HD DVD/DVD images) and not a video.
+    private static HashSet<string> MakeScanFolderVideoExtensions()
+    {
+        var extensions = new HashSet<string>(FileHelper.GetOpenSubtitleExtensions(true), StringComparer.OrdinalIgnoreCase);
+        extensions.ExceptWith(FileHelper.GetOpenSubtitleExtensions(false));
+        extensions.Remove(".sup");
+        return extensions;
+    }
+
+    internal static bool IsScanFolderVideoFile(string fileName)
+    {
+        return ScanFolderVideoExtensions.Contains(Path.GetExtension(fileName));
     }
 
     /// <summary>
@@ -2441,26 +2518,26 @@ public partial class BatchConvertViewModel : ObservableObject, IClosingCleanup
         {
             lock (_addFileLock)
             {
-                var number = 0;
-                foreach (var fileName in fileNames)
-                {
-                    if (token.IsCancellationRequested)
+                // A few workers hide per-file latency (network share, USB/HDD), and results come
+                // back in file order, batched - one UI update per ~100 ms instead of two per file.
+                BatchConvertFileLoader.Load(
+                    fileNames,
+                    AddFile,
+                    BatchConvertFileLoader.DefaultMaxDegreeOfParallelism,
+                    BatchConvertFileLoader.DefaultFlushInterval,
+                    progress => Dispatcher.UIThread.Post(() =>
                     {
-                        break;
-                    }
+                        if (progress.NewItems.Count > 0)
+                        {
+                            _allBatchItems.AddRange(progress.NewItems);
+                            AddFilteredItems(progress.NewItems);
+                            MakeBatchItemsInfo();
+                        }
 
-                    number++;
-                    var current = number;
-                    Dispatcher.UIThread.Post(() => AddingFilesStatus = string.Format("{0}/{1}: {2}", current, fileNames.Count, Path.GetFileName(fileName)));
-                    var added = AddFile(fileName);
-                    Dispatcher.UIThread.Post(() =>
-                    {
-                        _allBatchItems.AddRange(added);
-                        AddFilteredItems(added);
-                        AddingFilesProgressValue = current;
-                        MakeBatchItemsInfo();
-                    });
-                }
+                        AddingFilesProgressValue = progress.CompletedCount;
+                        AddingFilesStatus = string.Format("{0}/{1}: {2}", progress.CompletedCount, fileNames.Count, Path.GetFileName(progress.CurrentFileName));
+                    }),
+                    token);
             }
         });
 
@@ -2563,11 +2640,18 @@ public partial class BatchConvertViewModel : ObservableObject, IClosingCleanup
         }
     }
 
+    // Text/binary format detection runs IsMine/LoadSubtitle on the shared SubtitleFormat
+    // instances, which keep per-instance state (error counts, ...) - so only one file at a time
+    // may go through it. The container probes (Matroska, MP4, TS, ...) use their own instances
+    // and run in parallel.
+    private static readonly Lock FormatDetectionLock = new();
+
     // Parses a file and returns the resulting item(s) without touching any shared collection,
-    // so it is safe to call from a background thread. Callers append the returned items to
-    // _allBatchItems and the visible BatchItems on the UI thread - _allBatchItems is read there
-    // (filtering, the info label), so mutating it from the parse thread would race those reads.
-    private List<BatchConvertItem> AddFile(string fileName)
+    // so it is safe to call from several background threads at once (see BatchConvertFileLoader).
+    // Callers append the returned items to _allBatchItems and the visible BatchItems on the UI
+    // thread - _allBatchItems is read there (filtering, the info label), so mutating it from the
+    // parse threads would race those reads.
+    internal static List<BatchConvertItem> AddFile(string fileName)
     {
         var added = new List<BatchConvertItem>();
         var ext = Path.GetExtension(fileName).ToLowerInvariant();
@@ -2720,7 +2804,24 @@ public partial class BatchConvertViewModel : ObservableObject, IClosingCleanup
             return added;
         }
 
-        if (format == Se.Language.General.Unknown && fileInfo.Length < 20_000_000)
+        if (format == Se.Language.General.Unknown)
+        {
+            lock (FormatDetectionLock)
+            {
+                (subtitle, format) = DetectTextOrBinaryFormat(fileName, fileInfo.Length);
+            }
+        }
+
+        var batchItem = new BatchConvertItem(fileName, fileInfo.Length, format, subtitle);
+        added.Add(batchItem);
+        return added;
+    }
+
+    private static (Subtitle? Subtitle, string Format) DetectTextOrBinaryFormat(string fileName, long fileLength)
+    {
+        Subtitle? subtitle = null;
+        var format = Se.Language.General.Unknown;
+        if (fileLength < 20_000_000)
         {
             subtitle = Subtitle.Parse(fileName);
             if (subtitle != null)
@@ -2746,7 +2847,7 @@ public partial class BatchConvertViewModel : ObservableObject, IClosingCleanup
 
         // The load-only text formats (WSB, FTE, the JSON "load only" types, ...) - like File > Open.
         // This replaces a second, identical Subtitle.Parse that could only fail again.
-        if (format == Se.Language.General.Unknown && fileInfo.Length < 20_000_000)
+        if (format == Se.Language.General.Unknown && fileLength < 20_000_000)
         {
             subtitle = LoadOnlyTextFormatLoader.TryLoad(fileName, LanguageAutoDetect.GetEncodingFromFile(fileName));
             if (subtitle != null)
@@ -2755,9 +2856,7 @@ public partial class BatchConvertViewModel : ObservableObject, IClosingCleanup
             }
         }
 
-        var batchItem = new BatchConvertItem(fileName, fileInfo.Length, format, subtitle);
-        added.Add(batchItem);
-        return added;
+        return (subtitle, format);
     }
 
     private static string MakeMkvTrackInfoString(MatroskaTrackInfo track)
@@ -3108,6 +3207,12 @@ public partial class BatchConvertViewModel : ObservableObject, IClosingCleanup
             MergeSameTimeCode = CloneJson(tools.MergeSameTimeCode, SeJsonContext.Default.SeMergeSameTimeCode),
             BridgeGaps = CloneJson(tools.BridgeGaps, SeJsonContext.Default.SeBridgeGaps),
             ApplyMinGapMilliseconds = tools.ApplyMinGapMilliseconds,
+            SplitRebalanceLongLinesSplit = tools.SplitRebalanceLongLinesSplit,
+            SplitRebalanceLongLinesRebalance = tools.SplitRebalanceLongLinesRebalance,
+            SplitRebalanceLongLinesRebalanceOnlyTooLong = tools.SplitRebalanceLongLinesRebalanceOnlyTooLong,
+            SplitRebalanceLongLinesSingleLineMaxLength = tools.SplitRebalanceLongLinesSingleLineMaxLength,
+            SplitRebalanceLongLinesMaxNumberOfLines = tools.SplitRebalanceLongLinesMaxNumberOfLines,
+            SplitRebalanceLongLinesUnbreakShorterThan = tools.SplitRebalanceLongLinesUnbreakShorterThan,
         });
         Se.SaveSettings();
         RefreshPresetNames(name);
@@ -3198,6 +3303,13 @@ public partial class BatchConvertViewModel : ObservableObject, IClosingCleanup
         {
             tools.ApplyMinGapMilliseconds = preset.ApplyMinGapMilliseconds.Value;
         }
+
+        tools.SplitRebalanceLongLinesSplit = preset.SplitRebalanceLongLinesSplit ?? tools.SplitRebalanceLongLinesSplit;
+        tools.SplitRebalanceLongLinesRebalance = preset.SplitRebalanceLongLinesRebalance ?? tools.SplitRebalanceLongLinesRebalance;
+        tools.SplitRebalanceLongLinesRebalanceOnlyTooLong = preset.SplitRebalanceLongLinesRebalanceOnlyTooLong ?? tools.SplitRebalanceLongLinesRebalanceOnlyTooLong;
+        tools.SplitRebalanceLongLinesSingleLineMaxLength = preset.SplitRebalanceLongLinesSingleLineMaxLength ?? tools.SplitRebalanceLongLinesSingleLineMaxLength;
+        tools.SplitRebalanceLongLinesMaxNumberOfLines = preset.SplitRebalanceLongLinesMaxNumberOfLines ?? tools.SplitRebalanceLongLinesMaxNumberOfLines;
+        tools.SplitRebalanceLongLinesUnbreakShorterThan = preset.SplitRebalanceLongLinesUnbreakShorterThan ?? tools.SplitRebalanceLongLinesUnbreakShorterThan;
 
         _isApplyingPreset = true;
         try

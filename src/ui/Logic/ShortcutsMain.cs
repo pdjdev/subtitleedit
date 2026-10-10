@@ -355,6 +355,7 @@ public static class ShortcutsMain
         { nameof(MainViewModel.ShowVideoTextToSpeechCommand), Se.Language.Options.Shortcuts.TextToSpeech },
         { nameof(MainViewModel.ShowVideoVoiceManagerCommand), Se.Language.Video.TextToSpeech.VoiceManagerTitle },
         { nameof(MainViewModel.SpeakFromCurrentLineCommand), Se.Language.Video.TextToSpeech.SpeakFromCurrentLineTitle },
+        { nameof(MainViewModel.PlayWithSpeechCommand), Se.Language.Video.TextToSpeech.PlayWithSpeechTitle },
         { nameof(MainViewModel.ShowVideoOcrCommand), Se.Language.Options.Shortcuts.VideoOcr },
         { nameof(MainViewModel.ShowVideoBurnInCommand), Se.Language.Options.Shortcuts.BurnIn },
         { nameof(MainViewModel.ShowVideoTransparentSubtitlesCommand), Se.Language.Options.Shortcuts.GenerateTransparent },
@@ -460,6 +461,14 @@ public static class ShortcutsMain
         { nameof(MainViewModel.VideoMoveCustom3ForwardCommand),  string.Format(Se.Language.General.VideoCustom3ForwardX, Se.Settings.Video.MoveVideoPositionCustom3Forward) },
         { nameof(MainViewModel.VideoMoveCustom4BackCommand),  string.Format(Se.Language.General.VideoCustom4BackX, Se.Settings.Video.MoveVideoPositionCustom4Back) },
         { nameof(MainViewModel.VideoMoveCustom4ForwardCommand),  string.Format(Se.Language.General.VideoCustom4ForwardX, Se.Settings.Video.MoveVideoPositionCustom4Forward) },
+        { nameof(MainViewModel.VideoMoveCustom1BackAndPauseCommand),  string.Format(Se.Language.General.VideoCustom1BackAndPauseX, Se.Settings.Video.MoveVideoPositionCustom1Back) },
+        { nameof(MainViewModel.VideoMoveCustom1ForwardAndPauseCommand),  string.Format(Se.Language.General.VideoCustom1ForwardAndPauseX, Se.Settings.Video.MoveVideoPositionCustom1Forward) },
+        { nameof(MainViewModel.VideoMoveCustom2BackAndPauseCommand),  string.Format(Se.Language.General.VideoCustom2BackAndPauseX, Se.Settings.Video.MoveVideoPositionCustom2Back) },
+        { nameof(MainViewModel.VideoMoveCustom2ForwardAndPauseCommand),  string.Format(Se.Language.General.VideoCustom2ForwardAndPauseX, Se.Settings.Video.MoveVideoPositionCustom2Forward) },
+        { nameof(MainViewModel.VideoMoveCustom3BackAndPauseCommand),  string.Format(Se.Language.General.VideoCustom3BackAndPauseX, Se.Settings.Video.MoveVideoPositionCustom3Back) },
+        { nameof(MainViewModel.VideoMoveCustom3ForwardAndPauseCommand),  string.Format(Se.Language.General.VideoCustom3ForwardAndPauseX, Se.Settings.Video.MoveVideoPositionCustom3Forward) },
+        { nameof(MainViewModel.VideoMoveCustom4BackAndPauseCommand),  string.Format(Se.Language.General.VideoCustom4BackAndPauseX, Se.Settings.Video.MoveVideoPositionCustom4Back) },
+        { nameof(MainViewModel.VideoMoveCustom4ForwardAndPauseCommand),  string.Format(Se.Language.General.VideoCustom4ForwardAndPauseX, Se.Settings.Video.MoveVideoPositionCustom4Forward) },
 
         { nameof(MainViewModel.WaveformSetStartAndOffsetTheRestCommand),  Se.Language.General.SetStartAndOffsetTheRest },
         { nameof(MainViewModel.WaveformSetEndAndOffsetTheRestCommand),  Se.Language.General.SetEndAndOffsetTheRest },
@@ -967,6 +976,7 @@ public static class ShortcutsMain
         AddShortcut(shortcuts, vm.ShowVideoTextToSpeechCommand, nameof(vm.ShowVideoTextToSpeechCommand), ShortcutCategory.General, ShortcutGroup.Ai);
         AddShortcut(shortcuts, vm.ShowVideoVoiceManagerCommand, nameof(vm.ShowVideoVoiceManagerCommand), ShortcutCategory.General, ShortcutGroup.Ai);
         AddShortcut(shortcuts, vm.SpeakFromCurrentLineCommand, nameof(vm.SpeakFromCurrentLineCommand), ShortcutCategory.General, ShortcutGroup.Ai);
+        AddShortcut(shortcuts, vm.PlayWithSpeechCommand, nameof(vm.PlayWithSpeechCommand), ShortcutCategory.General, ShortcutGroup.Ai);
         AddShortcut(shortcuts, vm.ShowVideoOcrCommand, nameof(vm.ShowVideoOcrCommand), ShortcutCategory.General, ShortcutGroup.Ai);
         AddShortcut(shortcuts, vm.ShowVideoBurnInCommand, nameof(vm.ShowVideoBurnInCommand), ShortcutCategory.General, ShortcutGroup.Video);
         AddShortcut(shortcuts, vm.ShowVideoTransparentSubtitlesCommand, nameof(vm.ShowVideoTransparentSubtitlesCommand), ShortcutCategory.General, ShortcutGroup.Video);
@@ -1007,9 +1017,17 @@ public static class ShortcutsMain
         AddShortcut(shortcuts, vm.VideoMoveCustom3ForwardCommand, nameof(vm.VideoMoveCustom3ForwardCommand), ShortcutCategory.General, ShortcutGroup.Video);
         AddShortcut(shortcuts, vm.VideoMoveCustom4BackCommand, nameof(vm.VideoMoveCustom4BackCommand), ShortcutCategory.General, ShortcutGroup.Video);
         AddShortcut(shortcuts, vm.VideoMoveCustom4ForwardCommand, nameof(vm.VideoMoveCustom4ForwardCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.VideoMoveCustom1BackAndPauseCommand, nameof(vm.VideoMoveCustom1BackAndPauseCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.VideoMoveCustom1ForwardAndPauseCommand, nameof(vm.VideoMoveCustom1ForwardAndPauseCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.VideoMoveCustom2BackAndPauseCommand, nameof(vm.VideoMoveCustom2BackAndPauseCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.VideoMoveCustom2ForwardAndPauseCommand, nameof(vm.VideoMoveCustom2ForwardAndPauseCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.VideoMoveCustom3BackAndPauseCommand, nameof(vm.VideoMoveCustom3BackAndPauseCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.VideoMoveCustom3ForwardAndPauseCommand, nameof(vm.VideoMoveCustom3ForwardAndPauseCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.VideoMoveCustom4BackAndPauseCommand, nameof(vm.VideoMoveCustom4BackAndPauseCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.VideoMoveCustom4ForwardAndPauseCommand, nameof(vm.VideoMoveCustom4ForwardAndPauseCommand), ShortcutCategory.General, ShortcutGroup.Video);
 
-        AddShortcut(shortcuts, vm.WaveformSetStartAndOffsetTheRestCommand, nameof(vm.WaveformSetStartAndOffsetTheRestCommand), ShortcutCategory.Waveform);
-        AddShortcut(shortcuts, vm.WaveformSetEndAndOffsetTheRestCommand, nameof(vm.WaveformSetEndAndOffsetTheRestCommand), ShortcutCategory.Waveform);
+        AddShortcut(shortcuts, vm.WaveformSetStartAndOffsetTheRestCommand, nameof(vm.WaveformSetStartAndOffsetTheRestCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.WaveformSetEndAndOffsetTheRestCommand, nameof(vm.WaveformSetEndAndOffsetTheRestCommand), ShortcutCategory.General);
         AddShortcut(shortcuts, vm.WaveformSetStartCommand, nameof(vm.WaveformSetStartCommand), ShortcutCategory.General);
         AddShortcut(shortcuts, vm.WaveformSetStartAndGoToNextCommand, nameof(vm.WaveformSetStartAndGoToNextCommand), ShortcutCategory.General);
         AddShortcut(shortcuts, vm.WaveformSetStartAndKeepDurationCommand, nameof(vm.WaveformSetStartAndKeepDurationCommand), ShortcutCategory.General);
@@ -1528,6 +1546,10 @@ public static class ShortcutsMain
             // then wins over the menu toggle. Se.MigrateShortcuts clears the old persisted default.
             new(nameof(vm.WaveformSetStartCommand), [nameof(Avalonia.Input.Key.F11)], ShortcutCategory.General),
             new(nameof(vm.WaveformSetEndCommand), [nameof(Avalonia.Input.Key.F12)], ShortcutCategory.General),
+            // V4 default (#15800). macOS already has F9 on "set start" (MacOsDefaultChanges).
+            .. isMacOS
+                ? []
+                : new SeShortCut[] { new(nameof(vm.WaveformSetStartAndOffsetTheRestCommand), [nameof(Avalonia.Input.Key.F9)], ShortcutCategory.General) },
             new(nameof(vm.InsertLineAfterCommand), ["Alt", nameof(Avalonia.Input.Key.Insert)], ShortcutCategory.General),
             new(nameof(vm.InsertLineBeforeCommand), [cmd, "Shift", nameof(Avalonia.Input.Key.Insert)], ShortcutCategory.General),
             new(nameof(vm.AutoBreakCommand), [cmd, "Alt", nameof(Avalonia.Input.Key.B)], ShortcutCategory.General),

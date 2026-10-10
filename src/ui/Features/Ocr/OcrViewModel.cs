@@ -111,6 +111,8 @@ public partial class OcrViewModel : ObservableObject
     [ObservableProperty] private bool _isNOcrVisible;
     [ObservableProperty] private bool _isOllamaVisible;
     [ObservableProperty] private bool _isLlamaCppVisible;
+    [ObservableProperty] private bool _isLlamaCppLocalVisible;
+    [ObservableProperty] private bool _isLlamaCppRemoteVisible;
     [ObservableProperty] private bool _isCrispEmbedVisible;
     [ObservableProperty] private bool _isTesseractVisible;
     [ObservableProperty] private bool _isBinaryImageCompareVisible;
@@ -1499,10 +1501,13 @@ public partial class OcrViewModel : ObservableObject
             return;
         }
 
+        // The dialog edits the persisted URL, so hand it the one typed into the toolbar box.
+        Se.Settings.Ocr.LlamaCppUrl = LlamaCppUrl;
         var result = await _windowService.ShowDialogAsync<LlamaCppOcrSettingsWindow, LlamaCppOcrSettingsViewModel>(Window, vm => vm.Initialize(UpdateLlamaCppOcrEngineAsync));
         if (result.OkPressed)
         {
             LlamaCppUrl = Se.Settings.Ocr.LlamaCppUrl;
+            UpdateLlamaCppModeVisibility();
         }
 
         RefreshLlamaCppOcrDots();
@@ -1541,6 +1546,13 @@ public partial class OcrViewModel : ObservableObject
 
         RefreshLlamaCppOcrDots();
         UpdateLlamaCppOcrServerButtonText();
+    }
+
+    // Local mode shows the model/download/server controls; remote mode only the server URL (#15854).
+    private void UpdateLlamaCppModeVisibility()
+    {
+        IsLlamaCppLocalVisible = IsLlamaCppVisible && !Se.Settings.Ocr.LlamaCppUseRemoteServer;
+        IsLlamaCppRemoteVisible = IsLlamaCppVisible && Se.Settings.Ocr.LlamaCppUseRemoteServer;
     }
 
     private void UpdateLlamaCppOcrServerButtonText()
@@ -2409,10 +2421,12 @@ public partial class OcrViewModel : ObservableObject
             SubtitleGrid.SelectedItem = survivor;
         }
 
+        var removedIndexes = itemsToRemove.Select(item => rowIndexes[item]).OrderBy(index => index).ToList();
+
         // Bottom up, so the indexes of the rows still to go stay valid.
-        foreach (var index in itemsToRemove.Select(item => rowIndexes[item]).OrderByDescending(index => index))
+        for (var i = removedIndexes.Count - 1; i >= 0; i--)
         {
-            OcrSubtitleItems.RemoveAt(index);
+            OcrSubtitleItems.RemoveAt(removedIndexes[i]);
         }
 
         var removed = new HashSet<OcrSubtitleItem>(itemsToRemove);
@@ -2435,6 +2449,8 @@ public partial class OcrViewModel : ObservableObject
             UnknownWords.Remove(item);
         }
 
+        RemapFixAndGuessLineIndexes(removedIndexes);
+
         if (survivor != null)
         {
             SelectedOcrSubtitleItem = survivor;
@@ -2451,6 +2467,47 @@ public partial class OcrViewModel : ObservableObject
         {
             Dispatcher.UIThread.Post(() => TableViewExtras.FocusRow(SubtitleGrid), DispatcherPriority.Background);
         }
+    }
+
+    /// <summary>
+    /// "All fixes" and "All guesses" store the row index the fix was made on, which goes stale
+    /// when rows above it are deleted - the list said #68 for what had become line 50, and
+    /// clicking it jumped to the wrong row. Drops entries of deleted rows and shifts the rest up.
+    /// New items replace the old ones, as the list shows a ToString() snapshot of each.
+    /// </summary>
+    private void RemapFixAndGuessLineIndexes(List<int> removedIndexesSorted)
+    {
+        int? NewIndex(int lineIndex)
+        {
+            var pos = removedIndexesSorted.BinarySearch(lineIndex);
+            if (pos >= 0)
+            {
+                return null; // the row itself was deleted
+            }
+
+            return lineIndex - ~pos; // ~pos = number of deleted rows above
+        }
+
+        var fixes = new ObservableCollection<ReplacementUsedItem>();
+        foreach (var fix in AllFixes)
+        {
+            if (NewIndex(fix.LineIndex) is { } newIndex)
+            {
+                fixes.Add(newIndex == fix.LineIndex ? fix : new ReplacementUsedItem(fix.From, fix.To, newIndex));
+            }
+        }
+
+        var guesses = new ObservableCollection<GuessUsedItem>();
+        foreach (var guess in AllGuesses)
+        {
+            if (NewIndex(guess.LineIndex) is { } newIndex)
+            {
+                guesses.Add(newIndex == guess.LineIndex ? guess : new GuessUsedItem(guess.From, guess.To, newIndex));
+            }
+        }
+
+        AllFixes = fixes;
+        AllGuesses = guesses;
     }
 
     /// <summary>
@@ -4503,12 +4560,15 @@ public partial class OcrViewModel : ObservableObject
         // disposes the HttpClient the moment the task is started, so every request fails and the
         // grid fills with blank lines (#13633).
         var engine = new LlamaCppOcr(Se.Settings.Ocr.LlamaCppOcrTimeoutMinutes);
-        var selectedModel = SelectedLlamaCppOcrModel?.Model;
+
+        // Remote mode: the user's own llama-server at LlamaCppUrl, so no download or local server.
+        // Its model is unknown, so the generic prompt applies instead of a curated model's (#15854).
+        var selectedModel = Se.Settings.Ocr.LlamaCppUseRemoteServer ? null : SelectedLlamaCppOcrModel?.Model;
         var prompt = LlamaCppServerManager.ResolveOcrPrompt(selectedModel, Se.Settings.Ocr.LlamaCppOcrPrompt);
 
         _ = Task.Run(async () =>
         {
-            var url = LlamaCppUrl;
+            var url = (LlamaCppUrl ?? string.Empty).Trim();
             var modelName = "glmocr";
             try
             {
@@ -5034,6 +5094,11 @@ public partial class OcrViewModel : ObservableObject
     {
         _isCtrlDown = e.KeyModifiers.HasFlag(KeyModifiers.Control);
 
+        if (HandleFindReplaceKeys(e))
+        {
+            return;
+        }
+
         if (e.Key == Key.Escape)
         {
             e.Handled = true;
@@ -5385,6 +5450,7 @@ public partial class OcrViewModel : ObservableObject
         IsInspectLineVisible = et == OcrEngineType.nOcr || et == OcrEngineType.BinaryImageCompare;
         IsOllamaVisible = et == OcrEngineType.Ollama;
         IsLlamaCppVisible = et == OcrEngineType.LlamaCpp;
+        UpdateLlamaCppModeVisibility();
         IsCrispEmbedVisible = et == OcrEngineType.CrispEmbed;
         IsTesseractVisible = et == OcrEngineType.Tesseract;
         IsPaddleOcrVisible = et == OcrEngineType.PaddleOcrStandalone || et == OcrEngineType.PaddleOcrPython;
