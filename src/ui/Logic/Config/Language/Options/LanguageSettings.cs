@@ -66,7 +66,6 @@ public class LanguageSettings
     public string GridAlternatingRowColor { get; set; }
     public string GridAlternatingRowColorDark { get; set; }
     public string UiFont { get; set; }
-    public string Theme { get; set; }
     public string IconTheme { get; set; }
     public string DarkThemeForegroundColor { get; set; }
     public string DarkThemeBackgroundColor { get; set; }
@@ -76,7 +75,6 @@ public class LanguageSettings
     public string SpellCheckHighlightColor { get; set; }
     public string SingleLineMaxLength { get; set; }
     public string OptimalCharsPerSec { get; set; }
-    public string MaxCharsPerSec { get; set; }
     public string MaxWordsPerMin { get; set; }
     public string MinDurationMs { get; set; }
     public string MaxDurationMs { get; set; }
@@ -87,7 +85,6 @@ public class LanguageSettings
     public string MinGapCalculateFrames { get; set; }
     public string MinGapCalculateXFramesAtYGivesZMs { get; set; }
     public string MinGapCalculateUseXAsNewGap { get; set; }
-    public string MaxLines { get; set; }
     public string UnbreakSubtitlesShortThan { get; set; }
     public string AutoBreakLineEndingEarly { get; set; }
     public string AutoBreakCommaBreakEarly { get; set; }
@@ -128,6 +125,15 @@ public class LanguageSettings
     public string ColorOverlap { get; set; }
     public string ColorGapTooShort { get; set; }
     public string ErrorBackgroundColor { get; set; }
+    public string CustomErrorRules { get; set; }
+    public string CustomErrorRulesHighlight { get; set; }
+    public string CustomErrorRulesHint { get; set; }
+    public string CustomErrorRuleSelected { get; set; }
+    public string CustomErrorRuleTest { get; set; }
+    public string CustomErrorRuleTestMatch { get; set; }
+    public string CustomErrorRuleTestNoMatch { get; set; }
+    public string CustomErrorRulesOn { get; set; }
+    public string CustomErrorRulesOff { get; set; }
     public string WaveformDrawGridLines { get; set; }
     public string WaveformUseSkiaRenderer { get; set; }
     public string WaveformCenterVideoPositionAlsoWhenPaused { get; set; }
@@ -193,6 +199,8 @@ public class LanguageSettings
     public string VideoControlsPositionText { get; set; }
     public string VideoControlsVideoFileName { get; set; }
     public string VideoControlsPlayerName { get; set; }
+    public string VideoControlsPreviousSubtitle { get; set; }
+    public string VideoControlsNextSubtitle { get; set; }
     public string FullscreenHideControls { get; set; }
     public string ShowSecondarySubtitleDialog { get; set; }
     public string RememberSecondarySubtitleFile { get; set; }
@@ -248,9 +256,12 @@ public class LanguageSettings
     public string TimeCodeModeTime { get; set; }
     public string TimeCodeModeFrames { get; set; }
     public string TimeCodeModeFrameNumbers { get; set; }
+    public string FrameModeSnapToVideoFrames { get; set; }
     public string TextBoxLimitNewLines { get; set; }
+    public string TextBoxAutoWrapWhileTyping { get; set; }
     public string MpvOpenGl { get; set; }
     public string MpvSoftwareRendering { get; set; }
+    public string MpvMetalRendering { get; set; }
     public string MpvWidRendering { get; set; }
     public string WaveFormsAndSpectrogramFoldersContainsX { get; set; }
     public string DeleteWaveformAndSpectrogramFoldersQuestion { get; set; }
@@ -429,7 +440,6 @@ public class LanguageSettings
         GridAlternatingRowColor = "Alternating row color (light theme)";
         GridAlternatingRowColorDark = "Alternating row color (dark theme)";
         UiFont = "UI font";
-        Theme = "Theme";
         IconTheme = "Icon theme";
         DarkThemeForegroundColor = "Dark theme foreground color";
         DarkThemeBackgroundColor = "Dark theme background color";
@@ -439,7 +449,6 @@ public class LanguageSettings
         SpellCheckHighlightColor = "Spell check highlight color";
         SingleLineMaxLength = "Single line max length";
         OptimalCharsPerSec = "Optimal chars/sec";
-        MaxCharsPerSec = "Max chars/sec";
         MaxWordsPerMin = "Max words/min";
         MinDurationMs = "Min duration (ms)";
         MaxDurationMs = "Max duration (ms)";
@@ -450,7 +459,6 @@ public class LanguageSettings
         MinGapCalculateFrames = "Min. gap in frames";
         MinGapCalculateXFramesAtYGivesZMs = "{0} frames at a frame rate of {1} gives {2} milliseconds.";
         MinGapCalculateUseXAsNewGap = "Use \"{0}\" milliseconds as new minimum gap?";
-        MaxLines = "Max number of lines";
         UnbreakSubtitlesShortThan = "Unbreak subtitles shorter than";
         AutoBreakLineEndingEarly = "Auto-break early for end of sentence (.!?)";
         AutoBreakCommaBreakEarly = "Auto-break early for comma";
@@ -491,6 +499,15 @@ public class LanguageSettings
         ColorOverlap = "Color time code overlap";
         ColorGapTooShort = "Color if gap is too short";
         ErrorBackgroundColor = "Error background color";
+        CustomErrorRules = "Custom error rules";
+        CustomErrorRulesHighlight = "Color lines matching a custom error rule";
+        CustomErrorRulesHint = "A line whose text matches an enabled rule's regular expression is colored with the rule's color and counts as an error (List errors, Go to next error). The first matching rule decides the color.";
+        CustomErrorRuleSelected = "Selected rule";
+        CustomErrorRuleTest = "Test";
+        CustomErrorRuleTestMatch = "The selected rule matches the sample text";
+        CustomErrorRuleTestNoMatch = "The selected rule does not match the sample text";
+        CustomErrorRulesOn = "Custom error rules: on";
+        CustomErrorRulesOff = "Custom error rules: off";
         WaveformDrawGridLines = "Draw grid lines";
         WaveformUseSkiaRenderer = "Use experimental fast renderer";
         WaveformFocusOnMouseOver = "Focus on mouse over";
@@ -549,6 +566,8 @@ public class LanguageSettings
         VideoControlsPositionText = "Position / duration text";
         VideoControlsVideoFileName = "Video file name";
         VideoControlsPlayerName = "Video player name";
+        VideoControlsPreviousSubtitle = "Previous subtitle";
+        VideoControlsNextSubtitle = "Next subtitle";
         FullscreenHideControls = "Hide video controls in full-screen";
         ShowSecondarySubtitleDialog = "Show style dialog when opening a second subtitle file";
         RememberSecondarySubtitleFile = "Remember second subtitle file";
@@ -610,10 +629,13 @@ public class LanguageSettings
         TimeCodeModeTime = "Time (hh:mm:ss,zzz)";
         TimeCodeModeFrames = "Frames (hh:mm:ss:ff)";
         TimeCodeModeFrameNumbers = "Frame numbers";
+        FrameModeSnapToVideoFrames = "Store times on video frames (not frames within each second)";
         TextBoxLimitNewLines = "Limit number of lines in subtitle text box";
+        TextBoxAutoWrapWhileTyping = "Auto-wrap while typing";
         MpvOpenGl = "libmpv - OpenGL";
         MpvWidRendering = "libmpv - Native Window ID rendering";
         MpvSoftwareRendering = "libmpv - Software rendering (slow)";
+        MpvMetalRendering = "libmpv - Metal (experimental, needs restart)";
         VlcWidRendering = "libVLC - Native Window ID rendering";
         FfmpegSoftwareRendering = "FFmpeg";
         DownloadFfmpegLibs = "Download FFmpeg libraries (for the FFmpeg video player)";

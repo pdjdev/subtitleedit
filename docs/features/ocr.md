@@ -31,6 +31,8 @@ Built-in trainable OCR engine.
 - Very accurate once trained
 - Best for consistent fonts (like DVD/Blu-ray subtitles)
 - **Train nOCR database...** - a database can also be trained from installed fonts instead of being taught during OCR. Open the nOCR database settings (the settings button next to the database list) and right-click anywhere in that dialog to reach it. Pick one or more fonts, a font size, the characters to train (or **Import characters from subtitle file...**), letter combinations that might end up in one image, whether to include bold and italic, and the number of line segments; **Start training** renders every character in every selected font and saves the result as a new `.nocr` database in the OCR folder, ready to pick from the database list
+- **Optimize nOCR database...** - in the same right-click menu. Removes the lines of each character that don't tell it apart from similar characters (e.g. the stem that "i", "l" and "j" share), using glyphs rendered from common subtitle fonts as the check: every similar character must still be rejected, and the character itself must still match as well as before. The database gets smaller and OCR faster, usually with fewer errors - the shipped Latin database is already optimized this way. It takes up to a minute; the original is kept as `<name>.nocr.bak` in the OCR folder. Also available in seconv as `seconv optimize-nocr <database.nocr>`
+- **Mixed italic in one image** - when an italic letter touches an upright one and both end up in a single image, type the text with italic tags, e.g. `<i>i</i>t`. The tagged part is italic and the rest upright, whatever the surrounding word is, so an italic line comes out as `<i>... i</i>t<i>?</i>` instead of nested tags. This works the same in Binary OCR
 
 ### Binary OCR
 Binary image comparison engine, listed as **Binary image compare** in the engine dropdown.
@@ -59,7 +61,7 @@ Local LLM-based OCR via an Ollama server (e.g. with a vision model).
 ### llama.cpp
 Local LLM-based OCR using a llama.cpp-compatible server. Subtitle Edit can download llama.cpp and the model for you, or talk to a server you run yourself.
 - Default endpoint: `http://127.0.0.1:8080/v1/chat/completions`
-- Curated vision models, listed best-first for subtitles: **GLM-OCR 0.9B** (Q8_0, about 1.4 GB — the default, and the most accurate on subtitle images), **LFM2.5-VL 3B** (Q8_0, about 3.5 GB — a general vision model with flawless character recognition, slower and a bigger download; it uses its own prompt as long as the shared prompt below is unedited), **PaddleOCR-VL 1.6** (about 1.8 GB, 109 languages), **HunyuanOCR 1.5** (Q8_0, about 1.3 GB) and **LightOnOCR 1B** (Q8_0, about 1.2 GB — the least accurate and much the slowest). Custom vision models also appear in the list: put the `*.gguf` in the llama.cpp models folder together with its `mmproj` vision projector, named either `mmproj-<file>.gguf` or `<file>-mmproj.gguf` (the two naming schemes used on Hugging Face). A `*.gguf` without a projector next to it is not offered — it cannot see the image
+- Curated vision models, listed best-first for subtitles: **GLM-OCR 0.9B** (Q8_0, about 1.4 GB — the default, and the most accurate on subtitle images), **LightOnOCR-3 4B** (Q8_0, about 5.2 GB — as accurate as GLM-OCR and more than twice as fast, but a much bigger download), **LFM2.5-VL 3B** (Q8_0, about 3.5 GB — a general vision model with flawless character recognition, slower and a bigger download; it uses its own prompt as long as the shared prompt below is unedited), **PaddleOCR-VL 1.6** (about 1.8 GB, 109 languages), **HunyuanOCR 1.5** (Q8_0, about 1.3 GB), **QARI-OCR 0.2.2.1** (Q8_0, about 2.4 GB — fine-tuned for Arabic and the most accurate choice there; it joins two-line subtitles into one line) and **LightOnOCR-3 0.8B** (Q8_0, about 1.0 GB — by far the fastest, with slightly more misread words than the models above). Custom vision models also appear in the list: put the `*.gguf` in the llama.cpp models folder together with its `mmproj` vision projector, named either `mmproj-<file>.gguf` or `<file>-mmproj.gguf` (the two naming schemes used on Hugging Face). A `*.gguf` without a projector next to it is not offered — it cannot see the image
 - The settings dialog has a download/update button for the llama.cpp engine itself; the dot next to it turns amber when a newer build than the one installed is available
 
 ### CrispEmbed
@@ -165,7 +167,7 @@ number, time codes, duration and image size.
 | F3 / Shift+F3 | Find next / Find previous |
 | Ctrl++ | Zoom in (images in grid) |
 | Ctrl+- | Zoom out (images in grid) |
-| F1 | Show help |
+| F1 | Show help (default key, [changeable](shortcuts.md#worth-knowing)) |
 
 ### Subtitle Grid
 
@@ -188,12 +190,14 @@ number, time codes, duration and image size.
 
 ## Pre-processing
 
-Before OCR, you can apply image pre-processing:
-- Crop transparent colors
-- Remove borders (with configurable border size)
-- Invert colors
-- To one color (keep pixels brighter than a darkness threshold)
-- Binarize (convert to black/white using Otsu thresholding)
+Before OCR, you can apply image pre-processing via the **Image pre-processing** toggle button in the OCR window (it shows as pressed while any pre-processing is active):
+- **Crop transparent colors**
+- **Remove borders** (with configurable **Border size**)
+- **Inverse colors**
+- **One color (white)** (keep pixels brighter than a **Darkness threshold**)
+- **Binarize** (convert to black/white using Otsu thresholding)
+
+The settings are remembered between sessions and applied automatically the next time you open the OCR window. **Reset** in the **Pre-processing** window sets all options back to their defaults (all off, border size 2, darkness threshold 128).
 
 ## Batch OCR
 

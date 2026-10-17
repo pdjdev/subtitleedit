@@ -144,6 +144,46 @@ public static class SvgImporter
         return result;
     }
 
+    /// <summary>
+    /// Builds shapes from SVG path data: the <paramref name="union"/> paths are merged, the
+    /// <paramref name="subtract"/> paths cut out of them, and the result scaled by <paramref name="scale"/>.
+    /// Used for the built-in shape library, which is written as SVG path data.
+    /// </summary>
+    public static List<DrawShape> FromPathData(IEnumerable<string> union, IEnumerable<string>? subtract = null, float scale = 10)
+    {
+        SKPath? result = null;
+        foreach (var data in union)
+        {
+            var path = SKPath.ParseSvgPathData(data);
+            if (path == null)
+            {
+                continue;
+            }
+
+            path.FillType = SKPathFillType.Winding;
+            result = result == null ? path.Simplify() ?? path : result.Op(path, SKPathOp.Union) ?? result;
+        }
+
+        if (result == null)
+        {
+            return [];
+        }
+
+        foreach (var data in subtract ?? [])
+        {
+            var path = SKPath.ParseSvgPathData(data);
+            if (path != null)
+            {
+                result = result.Op(path, SKPathOp.Difference) ?? result;
+            }
+        }
+
+        result.Transform(SKMatrix.CreateScale(scale, scale));
+        var contours = ReadContours(result.Simplify() ?? result);
+        NormalizeDirections(contours);
+        return contours.Select(c => ToDrawShape(c, 0, Colors.White)).ToList();
+    }
+
     private static void Walk(XElement element, Context parent, List<Painted> painted, Dictionary<string, XElement> ids,
         Dictionary<string, Dictionary<string, string>> classRules, int depth)
     {
@@ -176,7 +216,7 @@ public static class SvgImporter
 
         if (properties.TryGetValue("opacity", out var opacity))
         {
-            context.Opacity *= Math.Clamp(ParseFloat(opacity, 1), 0, 1);
+            context.Opacity *= ParseOpacity(opacity);
         }
 
         var transform = (string?)element.Attribute("transform");
@@ -251,7 +291,7 @@ public static class SvgImporter
             return;
         }
 
-        var alpha = context.Opacity * Math.Clamp(ParseFloat(context.Properties.GetValueOrDefault("fill-opacity", "1"), 1), 0, 1);
+        var alpha = context.Opacity * ParseOpacity(context.Properties.GetValueOrDefault("fill-opacity", "1"));
         var path = new SKPath(source)
         {
             FillType = context.Properties.GetValueOrDefault("fill-rule") == "evenodd" ? SKPathFillType.EvenOdd : SKPathFillType.Winding,
@@ -298,7 +338,7 @@ public static class SvgImporter
 
         outline.FillType = SKPathFillType.Winding;
         outline.Transform(context.Matrix);
-        var alpha = context.Opacity * Math.Clamp(ParseFloat(context.Properties.GetValueOrDefault("stroke-opacity", "1"), 1), 0, 1);
+        var alpha = context.Opacity * ParseOpacity(context.Properties.GetValueOrDefault("stroke-opacity", "1"));
         painted.Add(new Painted { Path = outline, Color = WithAlpha(color, alpha) });
     }
 
@@ -459,12 +499,7 @@ public static class SvgImporter
                     break;
 
                 case SKPathVerb.Conic when current != null:
-                    var quads = SKPath.ConvertConicToQuads(points[0], points[1], points[2], iterator.ConicWeight(), 2);
-                    for (var i = 0; i + 2 < quads.Length; i += 2)
-                    {
-                        current.Segments.Add(QuadToCubic(quads[i], quads[i + 1], quads[i + 2]));
-                    }
-
+                    current.Segments.Add(ConicToCubic(points[0], points[1], points[2], iterator.ConicWeight()));
                     break;
 
                 case SKPathVerb.Cubic when current != null:
@@ -620,6 +655,23 @@ public static class SvgImporter
 
     private static bool IsSamePoint(SKPoint a, SKPoint b) => Math.Abs(a.X - b.X) < 0.01f && Math.Abs(a.Y - b.Y) < 0.01f;
 
+    /// <summary>
+    /// One cubic for a conic: control points at 4w/(3(1+w)) along the conic's tangents. Skia makes
+    /// arcs of at most 90 degrees, where this is the usual circle approximation (k = 0.5523) - one
+    /// bezier per quarter circle instead of the four the quad conversion produced.
+    /// </summary>
+    private static Segment ConicToCubic(SKPoint p0, SKPoint p1, SKPoint p2, float weight)
+    {
+        var k = 4f * weight / (3f * (1f + weight));
+        return new Segment
+        {
+            IsCubic = true,
+            Control1 = new SKPoint(p0.X + (p1.X - p0.X) * k, p0.Y + (p1.Y - p0.Y) * k),
+            Control2 = new SKPoint(p2.X + (p1.X - p2.X) * k, p2.Y + (p1.Y - p2.Y) * k),
+            End = p2,
+        };
+    }
+
     private static Segment QuadToCubic(SKPoint p0, SKPoint q, SKPoint p2)
     {
         return new Segment
@@ -759,7 +811,7 @@ public static class SvgImporter
                     return false;
                 }
 
-                var opacity = Math.Clamp(ParseFloat(properties.GetValueOrDefault("stop-opacity", "1"), 1), 0, 1);
+                var opacity = ParseOpacity(properties.GetValueOrDefault("stop-opacity", "1"));
                 color = WithAlpha(color, opacity);
                 return true;
             }
@@ -805,10 +857,28 @@ public static class SvgImporter
             return true;
         }
 
-        if (text.StartsWith('#') && text.Length == 4)
+        if (text.StartsWith('#'))
         {
-            // #rgb shorthand
-            text = $"#{text[1]}{text[1]}{text[2]}{text[2]}{text[3]}{text[3]}";
+            if (text.Length == 4)
+            {
+                // #rgb shorthand
+                text = $"#{text[1]}{text[1]}{text[2]}{text[2]}{text[3]}{text[3]}";
+            }
+            else if (text.Length == 5)
+            {
+                // #rgba shorthand -> #aarrggbb (Avalonia reads 8 hex digits as ARGB)
+                text = $"#{text[4]}{text[4]}{text[1]}{text[1]}{text[2]}{text[2]}{text[3]}{text[3]}";
+            }
+            else if (text.Length == 9)
+            {
+                // CSS #rrggbbaa -> #aarrggbb
+                text = $"#{text[7..9]}{text[1..7]}";
+            }
+        }
+        else if (text.Contains("grey", StringComparison.OrdinalIgnoreCase))
+        {
+            // CSS also accepts the British spelling (grey, lightgrey, slategrey, ...)
+            text = text.Replace("grey", "gray", StringComparison.OrdinalIgnoreCase);
         }
 
         return Color.TryParse(text, out color);
@@ -898,6 +968,17 @@ public static class SvgImporter
         }
 
         return result;
+    }
+
+    private static float ParseOpacity(string text)
+    {
+        var value = ParseFloat(text, 1);
+        if (text != null && text.TrimEnd().EndsWith('%'))
+        {
+            value /= 100f;
+        }
+
+        return Math.Clamp(value, 0, 1);
     }
 
     private static float ParseFloat(string text, float defaultValue)

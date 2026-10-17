@@ -22,4 +22,10 @@ public enum DrawingTool
 
     /// <summary>Color picker tool</summary>
     ColorPicker,
+
+    /// <summary>Place a shape from the shape library</summary>
+    Shape,
+
+    /// <summary>Place a text box</summary>
+    Text,
 }

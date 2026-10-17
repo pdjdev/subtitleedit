@@ -131,7 +131,7 @@ public partial class DownloadVoicePacksViewModel : ObservableObject
             {
                 token.ThrowIfCancellationRequested();
                 ProgressValue = 0;
-                ProgressText = string.Format(Se.Language.Video.TextToSpeech.DownloadingXDotDotDot, item.Name);
+                ProgressText = string.Format(Se.Language.General.DownloadingXDotDotDot, item.Name);
                 item.Status = Se.Language.General.Download + "...";
 
                 using var stream = new MemoryStream();
@@ -263,6 +263,11 @@ public partial class DownloadVoicePacksViewModel : ObservableObject
         {
             e.Handled = true;
             Cancel();
+        }
+        else if (UiUtil.IsHelp(e))
+        {
+            e.Handled = true;
+            UiUtil.ShowHelp("features/text-to-speech", "voice-manager");
         }
     }
 

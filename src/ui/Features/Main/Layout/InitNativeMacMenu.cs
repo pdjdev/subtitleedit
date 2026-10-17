@@ -148,6 +148,7 @@ public static class InitNativeMacMenu
                         UpdateWindowMenus();
                     }
 
+                    MacHelpSearchInterop.TryRegisterHelpMenu(Clean(Se.Language.Main.Menu.HelpTitle));
                     InstallDockMenu();
                 }, Avalonia.Threading.DispatcherPriority.Background);
             };
@@ -250,6 +251,8 @@ public static class InitNativeMacMenu
         exportItems.Items.Add(Item(lExport.TitleExportDvbTeletext, v => v.ExportDvbTeletextCommand));
         exportItems.Items.Add(Item(lExport.TitleExportDCinemaInteropPng, v => v.ExportDCinemaInteropPngCommand));
         exportItems.Items.Add(Item(lExport.TitleExportDCinemaSmpte2014Png, v => v.ExportDCinemaSmpte2014PngCommand));
+        exportItems.Items.Add(Item(lExport.TitleExportDCinemaSmpte2014PngMxf, v => v.ExportDCinemaSmpte2014PngMxfCommand));
+        exportItems.Items.Add(Item(lExport.TitleExportDCinemaSmpte2014Mxf, v => v.ExportDCinemaSmpte2014MxfCommand));
         exportItems.Items.Add(Item(Ebu.NameOfFormat, v => v.ExportEbuStlCommand));
         exportItems.Items.Add(Item(lExport.TitleExportDostPng, v => v.ExportDostPngCommand));
         exportItems.Items.Add(Item(lExport.TitleExportDvdSup, v => v.ExportDvdSupCommand));
@@ -262,6 +265,7 @@ public static class InitNativeMacMenu
         exportItems.Items.Add(new NativeMenuItemSeparator());
         exportItems.Items.Add(Item(Clean(lExport.CustomTextFormatsDotDotDot), v => v.ShowExportCustomTextFormatCommand));
         exportItems.Items.Add(Item(Clean(lExport.PlainTextDotDotDot), v => v.ShowExportPlainTextCommand));
+        exportItems.Items.Add(Item(Clean(lExport.DialogueListDotDotDot), v => v.ShowExportDialogueListCommand));
         fileItems.Items.Add(new NativeMenuItem(Clean(l.Export)) { Menu = exportItems });
 
         // ── Edit ──────────────────────────────────────────────────────────────
@@ -275,6 +279,7 @@ public static class InitNativeMacMenu
         editItems.Items.Add(Item(Clean(l.Replace), v => v.ShowReplaceCommand));
         editItems.Items.Add(Item(Clean(l.MultipleReplace), v => v.ShowMultipleReplaceCommand));
         editItems.Items.Add(Item(Clean(l.GoToLineNumber), v => v.ShowGoToLineCommand));
+        editItems.Items.Add(Item(Clean(l.CommandPalette), v => v.ShowCommandPaletteCommand));
         editItems.Items.Add(new NativeMenuItemSeparator());
         editItems.Items.Add(Toggle(Clean(l.RightToLeftMode), v => v.RightToLeftToggleCommand,
             v => v.IsRightToLeftEnabled, nameof(MainViewModel.IsRightToLeftEnabled)));
@@ -343,7 +348,8 @@ public static class InitNativeMacMenu
         state.RecentVideosItem = new NativeMenuItem(Clean(Se.Language.Video.OpenRecentVideo)) { Menu = new NativeMenu() };
         videoItems.Items.Add(state.RecentVideosItem);
 
-        videoItems.Items.Add(Item(Clean(l.CloseVideoFile), v => v.CommandVideoCloseCommand));
+        videoItems.Items.Add(Conditional(Clean(l.CloseVideoFile), v => v.CommandVideoCloseCommand,
+            v => v.IsVideoLoaded, nameof(MainViewModel.IsVideoLoaded)));
 
         // Same spot and wording as SE4's Video menu, so it can be found by anyone
         // looking for it there (#14389). Only meaningful with a video to draw on.
@@ -375,6 +381,7 @@ public static class InitNativeMacMenu
         videoItems.Items.Add(Item(Clean(l.GenerateTransparent), v => v.ShowVideoTransparentSubtitlesCommand));
         videoItems.Items.Add(Item(Clean(Se.Language.Video.GenerateBlankVideoDotDotDot), v => v.VideoGenerateBlankCommand));
         videoItems.Items.Add(Item(Clean(Se.Language.Video.EmbedSubtitlesDotDotDot), v => v.VideoEmbedCommand));
+        videoItems.Items.Add(Item(Clean(Se.Language.Video.SyncAudioTrackDotDotDot), v => v.ShowSyncAudioTrackCommand));
         videoItems.Items.Add(new NativeMenuItemSeparator());
         videoItems.Items.Add(Item(Clean(Se.Language.Video.Chapters.ChaptersDotDotDot), v => v.ShowVideoChaptersCommand));
         videoItems.Items.Add(new NativeMenuItemSeparator());

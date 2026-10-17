@@ -12,6 +12,9 @@ public class LanguageMain
     public string CharactersPerSecond { get; set; }
     public string ChooseColumn { get; set; }
     public string ColumnPaste { get; set; }
+    public string CommandPaletteTitle { get; set; }
+    public string CommandPaletteSearchPlaceholder { get; set; }
+    public string CommandPaletteNoCommandsFound { get; set; }
     public string CreatedEmptyTranslation { get; set; }
     public string DeleteText { get; set; }
     public string DeleteTextAndShiftCellsUp { get; set; }
@@ -46,7 +49,6 @@ public class LanguageMain
     public string LoadingWaveInfoFromCache { get; set; }
     public string ClickToGenerateWaveform { get; set; }
     public string WaveformFfmpegNotFoundClickToSetUp { get; set; }
-    public string NoTextInClipboard { get; set; }
     public string NumberOfLinesEvenlyDistributedX { get; set; }
     public string OneLineCopiedFromOriginal { get; set; }
     public string OneLineCopiedToOriginal { get; set; }
@@ -142,7 +144,6 @@ public class LanguageMain
     public string ToolXChangedYLines { get; set; }
     public string TranscriptionCompletedWithXLines { get; set; }
     public string OpenSubtitleFileX { get; set; }
-    public string ReplacedXOccurrences { get; set; }
     public string FfmpegDownloadedAndInstalledToX { get; set; }
     public string NothingToSave { get; set; }
     public string FormatLimitWarningTitle { get; set; }
@@ -175,13 +176,16 @@ public class LanguageMain
         AutoBreakHint = "Auto-break selected lines";
         CharactersPerSecond = "Chars/second: {0}";
         ChooseColumn = "Choose column";
+        CommandPaletteTitle = "Command palette";
+        CommandPaletteSearchPlaceholder = "Type to search commands...";
+        CommandPaletteNoCommandsFound = "No matching commands";
         ColumnPaste = "Column paste";
         CreatedEmptyTranslation = "Created empty translation from current subtitle";
         DeleteText = "Delete text";
         DeleteTextAndShiftCellsUp = "Delete text and shift cells up";
         EndTimeMustBeAfterStartTime = "End time must be after start time.";
         ErrorLoad7Zip = "This file seems to be a compressed 7-Zip file.\n\nSubtitle Edit cannot open compressed files.";
-        ErrorLoadBinaryZeroes = "Sorry, this file contains only binary zeroes!\n\nIf you have edited this file with Subtitle Edit you might be able to find a backup via the menu item File -&gt; Restore auto-backup...";
+        ErrorLoadBinaryZeroes = "Sorry, this file contains only binary zeroes!\n\nIf you have edited this file with Subtitle Edit you might be able to find a backup via the menu item File -> Restore auto-backup...";
         ErrorLoadGZip = "This file seems to be a compressed GZip file.\n\nSubtitle Edit cannot open compressed files.";
         ErrorLoadLargeFile = "This file is too large to open as a subtitle file.";
         ErrorLoadVideoFilePrompt = "This file seems to be a video file:\n{0}\n\nYou can open a video via \"Video -> Open video\" or by dragging and dropping a video onto the video player.\n\nDo you want to open it as a video file?";
@@ -210,7 +214,6 @@ public class LanguageMain
         LoadingWaveInfoFromCache = "Loading wave info from cache...";
         ClickToGenerateWaveform = "Click to generate waveform";
         WaveformFfmpegNotFoundClickToSetUp = "FFmpeg not found - click the waveform to set up FFmpeg and generate the waveform";
-        NoTextInClipboard = "No text in clipboard";
         NumberOfLinesEvenlyDistributedX = "Evenly distributed {0} lines";
         OneLineCopiedFromOriginal = "One line copied from original subtitle";
         OneLineCopiedToOriginal = "One line copied to original subtitle";
@@ -306,7 +309,6 @@ public class LanguageMain
         ToolXChangedYLines = "{0}: {1} lines changed";
         TranscriptionCompletedWithXLines = "Transcription completed with {0} lines";
         OpenSubtitleFileX = "Open subtitle file \"{0}\"?";
-        ReplacedXOccurrences = "Replaced {0} occurrences";
         FfmpegDownloadedAndInstalledToX = "ffmpeg downloaded and installed to {0}";
         NothingToSave = "Nothing to save";
         FormatLimitWarningTitle = "Format limits exceeded";

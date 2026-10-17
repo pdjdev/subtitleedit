@@ -17,6 +17,7 @@ using Nikse.SubtitleEdit.Core.SubtitleFormats;
 using Nikse.SubtitleEdit.Features.Assa;
 using Nikse.SubtitleEdit.Features.Help.CheckForUpdates;
 using Nikse.SubtitleEdit.Features.Main;
+using Nikse.SubtitleEdit.Features.Options.CustomErrorRules;
 using Nikse.SubtitleEdit.Features.Options.DoNotBreakAfterList;
 using Nikse.SubtitleEdit.Features.Options.Settings.MinGapCalculate;
 using Nikse.SubtitleEdit.Features.Options.Settings.SyntaxColorTooWideSettings;
@@ -140,7 +141,13 @@ public partial class SettingsViewModel : ObservableObject
     private bool _useFrameMode;
 
     [ObservableProperty] private ObservableCollection<TimeCodeModeDisplay> _timeCodeModes;
-    [ObservableProperty] private TimeCodeModeDisplay _selectedTimeCodeMode;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsFramesTimeCodeMode))]
+    private TimeCodeModeDisplay _selectedTimeCodeMode;
+
+    [ObservableProperty] private bool _frameModeSnapToVideoFrames;
+
+    public bool IsFramesTimeCodeMode => SelectedTimeCodeMode?.Mode == TimeCodeMode.Frames;
 
     // Frames and frame numbers are both frame mode (frame stepping, snapping, min gap in frames);
     // frame numbers only changes how a time code is shown and typed.
@@ -154,6 +161,7 @@ public partial class SettingsViewModel : ObservableObject
         ? Se.Language.Options.Settings.MinGapFrames
         : Se.Language.Options.Settings.MinGapMs;
     [ObservableProperty] private bool _textBoxLimitNewLines;
+    [ObservableProperty] private bool _textBoxAutoWrapWhileTyping;
     [ObservableProperty] private bool _autoSave;
     [ObservableProperty] private bool _autoBackupOn;
     [ObservableProperty] private int? _autoBackupIntervalMinutes;
@@ -263,6 +271,8 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _colorWordsPerMinute;
     [ObservableProperty] private bool _colorOverlap;
     [ObservableProperty] private bool _colorGapTooShort;
+    [ObservableProperty] private bool _colorCustomErrorRules;
+    private List<SeCustomErrorRule> _customErrorRules = new();
     [ObservableProperty] private Color _errorColor;
 
     [ObservableProperty] private ObservableCollection<VideoPlayerItem> _videoPlayers;
@@ -467,6 +477,12 @@ public partial class SettingsViewModel : ObservableObject
     /// not apply - and rebuild - everything twice (issue #14218).
     /// </summary>
     public string? AppliedSettingsSnapshot { get; private set; }
+
+    /// <summary>
+    /// True once an import has replaced (and saved) the settings. They are live from then on even
+    /// if the dialog is cancelled, so the main window still has to apply them (#15944).
+    /// </summary>
+    public bool SettingsImported { get; private set; }
 
     public Window? Window { get; internal set; }
     public ScrollViewer ScrollView { get; internal set; }
@@ -823,7 +839,9 @@ public partial class SettingsViewModel : ObservableObject
             ? TimeCodeMode.Time
             : general.UseFrameNumbersPersisted ? TimeCodeMode.FrameNumbers : TimeCodeMode.Frames;
         SelectedTimeCodeMode = TimeCodeModes.First(p => p.Mode == timeCodeMode);
+        FrameModeSnapToVideoFrames = general.FrameModeSnapToVideoFrames;
         TextBoxLimitNewLines = general.SubtitleTextBoxLimitNewLines;
+        TextBoxAutoWrapWhileTyping = general.SubtitleTextBoxAutoWrapWhileTyping;
         NewEmptyDefaultMs = general.NewEmptyDefaultMs;
         TimeCodeUpDownStepMs = general.TimeCodeUpDownStepMs;
         MoveSelectedLinesStepMs = general.MoveSelectedLinesStepMs;
@@ -1110,6 +1128,8 @@ public partial class SettingsViewModel : ObservableObject
         ColorOverlap = general.ColorTimeCodeOverlap;
         ColorGapTooShort = general.ColorGapTooShort;
         ErrorColor = general.ErrorColor.FromHexToColor();
+        ColorCustomErrorRules = general.ColorCustomErrorRules;
+        _customErrorRules = general.CustomErrorRules.Select(CopyCustomErrorRule).ToList();
 
         _editCustomContinuationStyle = new CustomContinuationStyle(general.CustomContinuationStyle);
 
@@ -1737,7 +1757,9 @@ public partial class SettingsViewModel : ObservableObject
 
         general.UseFrameMode = UseFrameMode;
         general.UseFrameNumbersPersisted = SelectedTimeCodeMode.Mode == TimeCodeMode.FrameNumbers;
+        general.FrameModeSnapToVideoFrames = FrameModeSnapToVideoFrames;
         general.SubtitleTextBoxLimitNewLines = TextBoxLimitNewLines;
+        general.SubtitleTextBoxAutoWrapWhileTyping = TextBoxAutoWrapWhileTyping;
         general.NewEmptyDefaultMs = NewEmptyDefaultMs ?? general.NewEmptyDefaultMs;
         general.TimeCodeUpDownStepMs = TimeCodeUpDownStepMs ?? general.TimeCodeUpDownStepMs;
         general.MoveSelectedLinesStepMs = MoveSelectedLinesStepMs ?? general.MoveSelectedLinesStepMs;
@@ -1992,6 +2014,8 @@ public partial class SettingsViewModel : ObservableObject
         general.ColorTimeCodeOverlap = ColorOverlap;
         general.ColorGapTooShort = ColorGapTooShort;
         general.ErrorColor = ErrorColor.FromColorToHex();
+        general.ColorCustomErrorRules = ColorCustomErrorRules;
+        general.CustomErrorRules = _customErrorRules.Select(CopyCustomErrorRule).ToList();
 
         general.CustomContinuationStyle = new CustomContinuationStyle(_editCustomContinuationStyle);
 
@@ -2359,6 +2383,35 @@ public partial class SettingsViewModel : ObservableObject
 
         return animation.RunAsync(control);
     }
+
+    [RelayCommand]
+    private async Task EditCustomErrorRules()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        var viewModel = await _windowService.ShowDialogAsync<CustomErrorRulesWindow, CustomErrorRulesViewModel>(Window, vm =>
+        {
+            vm.Initialize(ColorCustomErrorRules, _customErrorRules);
+        });
+
+        if (viewModel.OkPressed)
+        {
+            ColorCustomErrorRules = viewModel.IsHighlightEnabled;
+            _customErrorRules = viewModel.GetRules();
+        }
+    }
+
+    private static SeCustomErrorRule CopyCustomErrorRule(SeCustomErrorRule rule) => new()
+    {
+        Enabled = rule.Enabled,
+        Name = rule.Name,
+        Pattern = rule.Pattern,
+        MatchCase = rule.MatchCase,
+        Color = rule.Color,
+    };
 
     [RelayCommand]
     private async Task EditTextTooWideSettings()
@@ -3034,6 +3087,7 @@ public partial class SettingsViewModel : ObservableObject
                 Se.Settings.General.ColorTimeCodeOverlap = g.ColorTimeCodeOverlap;
                 Se.Settings.General.ColorGapTooShort = g.ColorGapTooShort;
                 Se.Settings.General.ErrorColor = g.ErrorColor;
+                Se.Settings.General.ColorCustomErrorRules = g.ColorCustomErrorRules; // the rules themselves are user data and stay
             }
         }
 
@@ -3267,6 +3321,7 @@ public partial class SettingsViewModel : ObservableObject
         {
             // Reload the settings from disk since they were updated
             LoadSettings();
+            SettingsImported = true;
         }
     }
 

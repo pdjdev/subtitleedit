@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -181,10 +181,15 @@ public partial class ApplyDurationLimitsViewModel : ObservableObject, IClosingCl
                 var wantedEndTime = TimeSpan.FromMilliseconds(item.StartTime.TotalMilliseconds + minMs);
                 var allowedEndTime = wantedEndTime;
 
-                // Never overlap the next line.
-                if (next != null && wantedEndTime > next.StartTime)
+                // Never overlap the next line or eat into the minimum gap - only checking for an
+                // overlap let a short extension shrink the gap below the minimum (#15994).
+                if (next != null)
                 {
-                    allowedEndTime = TimeSpan.FromMilliseconds(next.StartTime.TotalMilliseconds - Se.Settings.General.MinimumBetweenLines.GetMilliseconds());
+                    var latestEndTime = TimeSpan.FromMilliseconds(next.StartTime.TotalMilliseconds - Se.Settings.General.MinimumBetweenLines.GetMilliseconds());
+                    if (wantedEndTime > latestEndTime)
+                    {
+                        allowedEndTime = latestEndTime;
+                    }
                 }
 
                 allowedEndTime = CapAtShotChange(item, allowedEndTime);
@@ -248,16 +253,27 @@ public partial class ApplyDurationLimitsViewModel : ObservableObject, IClosingCl
             return newEndTime;
         }
 
-        // _shotChanges is sorted in Initialize, so the first hit is the earliest one.
-        foreach (var shotChangeSeconds in _shotChanges)
+        // _shotChanges is sorted in Initialize: binary search the first shot change after the
+        // current end (a scan from the start per line was O(lines x shot changes)).
+        var low = 0;
+        var high = _shotChanges.Count;
+        while (low < high)
         {
-            var shotChangeMs = shotChangeSeconds * 1000.0;
-            if (shotChangeMs >= newEndMs)
+            var mid = low + (high - low) / 2;
+            if (_shotChanges[mid] * 1000.0 > currentEndMs)
             {
-                break;
+                high = mid;
             }
+            else
+            {
+                low = mid + 1;
+            }
+        }
 
-            if (shotChangeMs > currentEndMs)
+        if (low < _shotChanges.Count)
+        {
+            var shotChangeMs = _shotChanges[low] * 1000.0;
+            if (shotChangeMs < newEndMs)
             {
                 return TimeSpan.FromMilliseconds(shotChangeMs);
             }

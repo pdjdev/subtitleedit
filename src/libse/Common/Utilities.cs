@@ -611,7 +611,7 @@ namespace Nikse.SubtitleEdit.Core.Common
             }
 
             var text = input.Replace('\u00a0', ' '); // replace non-break-space (160 decimal) ascii char with normal space
-            if (!(text.IndexOf(' ') >= 0 || text.IndexOf('\n') >= 0))
+            if (!(text.Contains(' ') || text.Contains('\n')))
             {
                 if (!IsCjkLanguage(language))
                 {
@@ -620,7 +620,7 @@ namespace Nikse.SubtitleEdit.Core.Common
             }
 
             // do not auto break dialogs or music symbol
-            if (text.Contains(Environment.NewLine) && (text.IndexOf('-') >= 0 || text.IndexOf('♪') >= 0))
+            if (text.Contains(Environment.NewLine) && (text.Contains('-') || text.Contains('♪')))
             {
                 var sanitizedLines = RemoveUnicodeControlChars(HtmlUtil.RemoveHtmlTags(text, true)).SplitToLines();
                 if (sanitizedLines.Count == 2)
@@ -968,6 +968,8 @@ namespace Nikse.SubtitleEdit.Core.Common
         /// <summary>
         /// Removes ASSA override blocks ({\...}), the {Kara Effector...} block and \N, \n, \h.
         /// </summary>
+        /// <param name="input">The text to remove tags from.</param>
+        /// <param name="removeDrawingTags">Return an empty string when what is left is only a drawing ("m 0 0 l ...").</param>
         /// <param name="removeCommentBlocks">
         /// Also remove any other closed {...} block. ASSA renderers never draw a brace block, so
         /// fansubbers use {...} for comments (#15584); an unclosed '{' is drawn as text. Off by
@@ -1076,7 +1078,7 @@ namespace Nikse.SubtitleEdit.Core.Common
             // Check if remaining string is just coordinates/commands
             foreach (char c in span)
             {
-                if (!char.IsDigit(c) && "-lm .".IndexOf(c) == -1)
+                if (!char.IsDigit(c) && !"-lm .".Contains(c))
                     return false;
             }
 
@@ -3507,7 +3509,7 @@ namespace Nikse.SubtitleEdit.Core.Common
                     var isLineContinuation = s.EndsWith("...", StringComparison.Ordinal) ||
                                               IsLetterOrCombiningMark(lastChar) ||
                                               char.IsDigit(lastChar) ||
-                                              LineContinuationEndChars.IndexOf(lastChar) >= 0 ||
+                                              LineContinuationEndChars.Contains(lastChar) ||
                                               (CalcCjk.IsCjk(lastChar) && !IsCjkSentenceEnding(lastChar));
 
                     if (s.EndsWith('♪') || nextText.StartsWith('♪'))

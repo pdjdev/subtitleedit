@@ -33,6 +33,7 @@ using Nikse.SubtitleEdit.Logic.Config;
 using Nikse.SubtitleEdit.Logic.Dictionaries;
 using Nikse.SubtitleEdit.Logic.Media;
 using Nikse.SubtitleEdit.Logic.LlamaCpp;
+using Nikse.SubtitleEdit.Logic.Plugins;
 using Nikse.SubtitleEdit.UiLogic.Ocr;
 using SkiaSharp;
 using System;
@@ -104,15 +105,18 @@ public class BatchConverter : IBatchConverter, IFixCallbacks
     private readonly INOcrCaseFixer _nOcrCaseFixer;
     private readonly IBinaryOcrMatcher _binaryOcrMatcher;
     private OcrLineHeightTracker _lineHeightTracker = new();
+    private NOcrSpaceDetector _nOcrSpaceDetector = new();
     private readonly INamesList _namesList;
+    private readonly IPluginRunner _pluginRunner;
     private string _namesListFolder = string.Empty;
     private string _namesListLanguage = string.Empty;
 
-    public BatchConverter(INOcrCaseFixer nOcrCaseFixer, IBinaryOcrMatcher binaryOcrMatcher, INamesList namesList)
+    public BatchConverter(INOcrCaseFixer nOcrCaseFixer, IBinaryOcrMatcher binaryOcrMatcher, INamesList namesList, IPluginRunner? pluginRunner = null)
     {
         _nOcrCaseFixer = nOcrCaseFixer;
         _binaryOcrMatcher = binaryOcrMatcher;
         _namesList = namesList;
+        _pluginRunner = pluginRunner ?? new PluginRunner();
         _config = new BatchConvertConfig();
         _subtitleFormats = new List<SubtitleFormat>();
         _compiledRegExList = new Dictionary<string, Regex>();
@@ -655,16 +659,14 @@ public class BatchConverter : IBatchConverter, IFixCallbacks
         if (_config.TargetFormatName == FormatPlainText && item.Subtitle != null)
         {
             var path = MakeOutputFileName(item, ".txt");
-            var sb = new StringBuilder();
-            foreach (var p in item.Subtitle.Paragraphs)
-            {
-                sb.AppendLine(HtmlUtil.RemoveHtmlTags(p.Text, true));
-            }
+
+            // Same options as File -> Export -> Plain text (set via the target format settings button).
+            var text = PlainTextFormatter.Generate(item.Subtitle.Paragraphs, Se.Settings.File.ExportPlainText.ToOptions());
 
             try
             {
                 var encoding = EncodingHelper.ResolveEncoding(_config.TargetEncoding, item.FileName);
-                await File.WriteAllTextAsync(path, sb.ToString(), encoding, cancellationToken);
+                await File.WriteAllTextAsync(path, text, encoding, cancellationToken);
                 item.Status = Se.Language.General.Converted;
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
@@ -1001,6 +1003,7 @@ public class BatchConverter : IBatchConverter, IFixCallbacks
     private void RunNOcr(IOcrSubtitle imageSubtitles, BatchConvertItem item, CancellationToken cancellationToken)
     {
         _lineHeightTracker = new OcrLineHeightTracker { FallbackMinLineHeight = item.Format == FormatBluRaySup ? 25 : 12 };
+        _nOcrSpaceDetector = new NOcrSpaceDetector();
         var fileName = Path.Combine(Se.OcrFolder, Se.Settings.Ocr.NOcrDatabase + ".nocr");
         var nOcrDb = new NOcrDb(fileName);
         var totalCount = imageSubtitles.Count;
@@ -1023,10 +1026,11 @@ public class BatchConverter : IBatchConverter, IFixCallbacks
             }
         }
 
-        // Pre-flight: detect pixels-is-space from a sample of images.
+        // Pre-flight: detect pixels-is-space from a sample of images. With "pixels are space"
+        // set to auto (0) every image is measured on its own instead (NOcrSpaceDetector).
         var sampleSize = Math.Min(OcrPreflightSampleSize, totalCount);
-        var pixelsAreSpace = Se.Settings.Ocr.NOcrPixelsAreSpace > 0 ? Se.Settings.Ocr.NOcrPixelsAreSpace : 12;
-        if (sampleSize > 0)
+        var pixelsAreSpace = Se.Settings.Ocr.NOcrPixelsAreSpace;
+        if (sampleSize > 0 && pixelsAreSpace > 0)
         {
             item.Status = Se.Language.General.OcrDotDotDot;
             var detected = DetectPixelsIsSpace(imageSubtitles, sampleSize, cancellationToken);
@@ -1095,11 +1099,18 @@ public class BatchConverter : IBatchConverter, IFixCallbacks
     {
         var bitmap = imageSubtitles.GetBitmap(i);
         var parentBitmap = new NikseBitmap2(bitmap);
-        parentBitmap.MakeTwoColor(200);
+        parentBitmap.MakeTwoColor(OcrTwoColorThreshold.Get(parentBitmap));
         parentBitmap.CropTop(0, new SKColor(0, 0, 0, 0));
-        var letters = NikseBitmapImageSplitter2.SplitBitmapToLettersNew(parentBitmap, pixelsAreSpace,
+        var isAutoSpace = pixelsAreSpace <= 0;
+        var letters = NikseBitmapImageSplitter2.SplitBitmapToLettersNew(parentBitmap,
+            isAutoSpace ? NOcrSpaceDetector.SplitPixelsAreSpace : pixelsAreSpace,
             false, true, _lineHeightTracker.GetMinLineHeight(), true, _lineHeightTracker.GetAverageLineHeight());
         _lineHeightTracker.Update(letters);
+        if (isAutoSpace)
+        {
+            letters = _nOcrSpaceDetector.RemoveFalseSpaces(letters, out pixelsAreSpace);
+        }
+
         var index = 0;
         var matches = new List<NOcrChar>();
         var maxErrorPercent = Se.Settings.Ocr.BinaryOcrMaxErrorPercent > 0 ? Se.Settings.Ocr.BinaryOcrMaxErrorPercent : 7.5;
@@ -1685,7 +1696,7 @@ public class BatchConverter : IBatchConverter, IFixCallbacks
                 return false;
             }
 
-            return await RunLlamaCppOcrPages(imageSubtitles, item, sourceLanguage, remoteUrl, null, cancellationToken);
+            return await RunLlamaCppOcrPages(imageSubtitles, item, sourceLanguage, LlamaCppOcr.CompleteRemoteUrl(remoteUrl), null, cancellationToken);
         }
 
         // Curated or self-supplied OCR model from settings (picked in batch convert settings /
@@ -2010,6 +2021,22 @@ public class BatchConverter : IBatchConverter, IFixCallbacks
                 Depth3D = profile.Depth3D,
                 Plane3D = plane3D,
             };
+            // Text rendered from the export-images profile: the colors it was drawn with, not
+            // white/black. VobSub builds its 4-color palette from these, so with white/black a
+            // red or blue text was quantized to the black outline color (#15942). "{\fad(..)}"
+            // was parsed into fade keyframes when it was rendered - Blu-ray sup writes them as
+            // palette updates, the same as the main window's export. Also the alignment from
+            // "{\an8}" & co.: D-Cinema writes it as Valign/Halign and has no use for the override
+            // position the other handlers place the image with, so top lines ended up at the bottom.
+            if (imageSubtitle is OcrSubtitleImageParameter textImages &&
+                textImages.GetImageParameter(i) is { } rendered)
+            {
+                param.FontColor = rendered.FontColor;
+                param.OutlineColor = rendered.OutlineColor;
+                param.FadeKeyframes = rendered.FadeKeyframes;
+                param.Alignment = rendered.Alignment;
+            }
+
             var position = imageSubtitle.GetPosition(i);
             if (imageSubtitle is OcrSubtitleTransportStream)
             {
@@ -2494,11 +2521,70 @@ public class BatchConverter : IBatchConverter, IFixCallbacks
             s = AssaChangeStyleProperties(s);
             s = BeautifyTimeCodes(s, item.FileName);
             s = SnapTimeCodesToFrames(s, item.FileName);
+            s = await RunPlugin(s, item, cancellationToken);
             s = SortBy(s);
             s = Renumber(s);
         }
 
         return s;
+    }
+
+    /// <summary>
+    /// Runs the chosen batch-capable plugin with a "batch" request: no UI, all lines, the plugin's
+    /// saved settings. Any failure throws so this file is marked as failed and the batch goes on.
+    /// Settings the plugin returns are not persisted - a run must not change its own configuration.
+    /// </summary>
+    private async Task<Subtitle> RunPlugin(Subtitle subtitle, BatchConvertItem item, CancellationToken cancellationToken)
+    {
+        if (!_config.RunPlugin.IsActive)
+        {
+            return subtitle;
+        }
+
+        var plugin = _config.RunPlugin.Plugin;
+        if (plugin == null)
+        {
+            throw new InvalidOperationException(string.Format(Se.Language.Plugins.PluginXNotAvailable, _config.RunPlugin.PluginName));
+        }
+
+        var format = subtitle.OriginalFormat ?? new SubRip();
+        var request = PluginRequestHelper.CreateRequest(plugin, PluginConstants.RequestTypeBatch);
+        request.Subtitle = PluginRequestHelper.ToPluginSubtitle(subtitle, format, item.FileName);
+
+        var runResult = await _pluginRunner.RunAsync(plugin, request, cancellationToken);
+        if (runResult.WasCancelled)
+        {
+            throw new OperationCanceledException(cancellationToken);
+        }
+
+        if (!runResult.Succeeded || runResult.Response == null)
+        {
+            throw new InvalidOperationException(runResult.ErrorMessage ?? string.Format(Se.Language.Plugins.PluginXFailed, plugin.Manifest.Name));
+        }
+
+        var response = runResult.Response;
+        if (response.Status == PluginConstants.StatusError)
+        {
+            throw new InvalidOperationException(string.IsNullOrWhiteSpace(response.Message)
+                ? string.Format(Se.Language.Plugins.PluginXReportedError, plugin.Manifest.Name)
+                : response.Message);
+        }
+
+        if (response.Status != PluginConstants.StatusOk || !PluginRequestHelper.HasSubtitle(response.Subtitle))
+        {
+            return subtitle;
+        }
+
+        var result = PluginRequestHelper.ReadSubtitle(response.Subtitle!);
+        if (result.Paragraphs.Count == 0)
+        {
+            throw new InvalidOperationException(string.Format(Se.Language.Plugins.PluginXReturnedUnparsableSubtitle, plugin.Manifest.Name));
+        }
+
+        subtitle.Paragraphs.Clear();
+        subtitle.Paragraphs.AddRange(result.Paragraphs);
+        subtitle.Header = response.Subtitle!.Header ?? (response.Subtitle.Paragraphs is { Count: > 0 } ? subtitle.Header : result.Header ?? subtitle.Header);
+        return subtitle;
     }
 
     private Subtitle RemoveUnicodeControlCharacters(Subtitle subtitle)

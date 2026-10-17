@@ -184,6 +184,11 @@ public partial class BinaryOcrCharacterHistoryViewModel : ObservableObject
         {
             _isControlDown = true;
         }
+        else if (UiUtil.IsHelp(e))
+        {
+            e.Handled = true;
+            UiUtil.ShowHelp("features/ocr", "binary-ocr");
+        }
     }
 
     public void KeyUp(KeyEventArgs e)
@@ -223,7 +228,7 @@ public partial class BinaryOcrCharacterHistoryViewModel : ObservableObject
         BinaryOcrBitmap = selectedItem.BinaryOcrBitmap;
         IsNewTextItalic = BinaryOcrBitmap.Italic;
         NewText = BinaryOcrBitmap.Text ?? string.Empty;
-        LineIndex = string.Format(Se.Language.Ocr.LineIndexX, selectedItem.LineIndex + 1);
+        LineIndex = string.Format(Se.Language.General.LineX, selectedItem.LineIndex + 1);
         if (BinaryOcrBitmap.ExpandCount > 1 && selectedItem.PreviewBitmap != null)
         {
             ResolutionAndTopMargin = string.Format(Se.Language.Ocr.ResolutionXYAndTopmarginZ, selectedItem.PreviewBitmap.Width, selectedItem.PreviewBitmap.Height, selectedItem.PreviewTopMargin);

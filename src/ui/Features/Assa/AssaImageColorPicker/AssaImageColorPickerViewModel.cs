@@ -14,7 +14,9 @@ using Nikse.SubtitleEdit.Logic;
 using Nikse.SubtitleEdit.Logic.Config;
 using Nikse.SubtitleEdit.Logic.Media;
 using SkiaSharp;
+using System.Collections.ObjectModel;
 using System.Globalization;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace Nikse.SubtitleEdit.Features.Assa.AssaImageColorPicker;
@@ -23,6 +25,8 @@ public partial class AssaImageColorPickerViewModel : ObservableObject
 {
     public Window? Window { get; internal set; }
     public bool OkPressed { get; private set; }
+    public bool IsColorSelection { get; private set; }
+    public Color? SelectedColor => HasPickedColor ? ClickedColor.Color : null;
     public Image? ScreenshotImage { get; set; }
     public Image? ScreenshotOverlayImage { get; set; }
     public Grid? VideoGrid { get; set; }
@@ -39,7 +43,31 @@ public partial class AssaImageColorPickerViewModel : ObservableObject
     [ObservableProperty] private SolidColorBrush _clickedColor = new SolidColorBrush(Colors.Transparent);
     [ObservableProperty] private string _currentMouseColorHex = "#00000000";
     [ObservableProperty] private string _clickedColorHex = "#00000000";
-    [ObservableProperty] private string _copyButtonContent = Se.Language.General.Copy;
+
+    /// <summary>
+    /// The pixels around the pointer, enlarged - the pointer pixel outlined in the middle.
+    /// </summary>
+    [ObservableProperty] private Bitmap? _magnifier;
+
+    [ObservableProperty] private string _currentMouseColorRgbHex = string.Empty;
+    [ObservableProperty] private string _clickedColorRgbHex = string.Empty;
+
+    /// <summary>
+    /// The picked color the way ASSA writes it: &amp;HBBGGRR&amp;.
+    /// </summary>
+    [ObservableProperty] private string _clickedColorAssa = string.Empty;
+    [ObservableProperty] private bool _hasPickedColor;
+    [ObservableProperty] private string _copiedText = string.Empty;
+
+    /// <summary>
+    /// Colors picked in this session, newest first - click one to pick it again.
+    /// </summary>
+    public ObservableCollection<PickedColorItem> History { get; } = [];
+
+    private const int MagnifierCells = 11;
+    private const int MagnifierCellSize = 8;
+    private const int MaxHistory = 14;
+    private SKBitmap? _screenshotPixels;
 
     private Subtitle _subtitle = new();
 
@@ -49,7 +77,124 @@ public partial class AssaImageColorPickerViewModel : ObservableObject
     {
         Screenshot = new SKBitmap(1, 1).ToAvaloniaBitmap();
         ScreenshotOverlayPosiion = string.Empty;
-        CopyButtonContent = Se.Language.Assa.CopyColorAsHextoClipboard;
+    }
+
+    partial void OnScreenshotChanged(Bitmap value)
+    {
+        _screenshotPixels?.Dispose();
+        _screenshotPixels = null;
+    }
+
+    /// <summary>
+    /// The Skia copy of the frame and the magnifier bitmap are only freed when replaced - free
+    /// them when the window closes too.
+    /// </summary>
+    public void OnClosed()
+    {
+        _screenshotPixels?.Dispose();
+        _screenshotPixels = null;
+        var magnifier = Magnifier;
+        Magnifier = null;
+        magnifier?.Dispose();
+    }
+
+    /// <summary>
+    /// A Skia copy of the frame for the magnifier (made once, not on every pointer move).
+    /// </summary>
+    private SKBitmap Pixels => _screenshotPixels ??= Screenshot.ToSkBitmap();
+
+    internal static string ToRgbHex(Color color) => $"#{color.R:X2}{color.G:X2}{color.B:X2}";
+
+    internal static string ToAssaColor(Color color) => $"&H{color.B:X2}{color.G:X2}{color.R:X2}&";
+
+    /// <summary>
+    /// Makes a color the picked one (click on the frame or on a history swatch) and puts it first in the history.
+    /// </summary>
+    public void Pick(Color color)
+    {
+        ClickedColor = new SolidColorBrush(color);
+        ClickedColorHex = ColorToHex(color);
+        ClickedColorRgbHex = ToRgbHex(color);
+        ClickedColorAssa = ToAssaColor(color);
+        HasPickedColor = true;
+
+        var existing = History.FirstOrDefault(h => h.Color == color);
+        if (existing != null)
+        {
+            History.Remove(existing);
+        }
+
+        History.Insert(0, new PickedColorItem(color));
+        while (History.Count > MaxHistory)
+        {
+            History.RemoveAt(History.Count - 1);
+        }
+    }
+
+    [RelayCommand]
+    private void PickFromHistory(PickedColorItem? item)
+    {
+        if (item != null)
+        {
+            Pick(item.Color);
+        }
+    }
+
+    [RelayCommand]
+    private Task CopyHex() => Copy(ClickedColorRgbHex);
+
+    [RelayCommand]
+    private Task CopyAssa() => Copy(ClickedColorAssa);
+
+    [RelayCommand]
+    private Task CopyAssaTag() => Copy("\\c" + ClickedColorAssa);
+
+    private async Task Copy(string text)
+    {
+        if (Window?.Clipboard == null || !HasPickedColor)
+        {
+            return;
+        }
+
+        await ClipboardHelper.SetTextAsync(Window, text);
+        CopiedText = "\u2713 " + text;
+        await Task.Delay(2000);
+        if (CopiedText == "\u2713 " + text)
+        {
+            CopiedText = string.Empty;
+        }
+    }
+
+    /// <summary>
+    /// The 11 x 11 pixels around (x, y), eight times larger, the center one outlined.
+    /// </summary>
+    internal static SKBitmap MakeMagnifier(SKBitmap source, int x, int y)
+    {
+        var size = MagnifierCells * MagnifierCellSize;
+        var bitmap = new SKBitmap(size, size);
+        using var canvas = new SKCanvas(bitmap);
+        canvas.Clear(new SKColor(27, 28, 33));
+        using var paint = new SKPaint();
+        var half = MagnifierCells / 2;
+        for (var row = 0; row < MagnifierCells; row++)
+        {
+            for (var column = 0; column < MagnifierCells; column++)
+            {
+                var px = x - half + column;
+                var py = y - half + row;
+                if (px < 0 || py < 0 || px >= source.Width || py >= source.Height)
+                {
+                    continue;
+                }
+
+                paint.Color = source.GetPixel(px, py);
+                canvas.DrawRect(column * MagnifierCellSize, row * MagnifierCellSize, MagnifierCellSize, MagnifierCellSize, paint);
+            }
+        }
+
+        using var outline = new SKPaint { Color = SKColors.White, Style = SKPaintStyle.Stroke, StrokeWidth = 1.5f, IsAntialias = true };
+        canvas.DrawRect(half * MagnifierCellSize + 0.75f, half * MagnifierCellSize + 0.75f, MagnifierCellSize - 1.5f, MagnifierCellSize - 1.5f, outline);
+        return bitmap;
     }
 
     partial void OnScreenshotXChanged(int value)
@@ -117,6 +262,19 @@ public partial class AssaImageColorPickerViewModel : ObservableObject
             TargetHeight = 1080;
         }
 
+        LoadFrame(videoFileName, AssaSetPositionViewModel.GetScreenshotSeconds(line, videoPositionSeconds));
+    }
+
+    public void InitializeForColorSelection(string? videoFileName, int videoWidth, int videoHeight, double positionSeconds)
+    {
+        IsColorSelection = true;
+        TargetWidth = videoWidth;
+        TargetHeight = videoHeight;
+        LoadFrame(videoFileName, positionSeconds);
+    }
+
+    private void LoadFrame(string? videoFileName, double positionSeconds)
+    {
         if (string.IsNullOrEmpty(videoFileName))
         {
             Screenshot = BinaryAdjustAlphaViewModel.CreateCheckeredBackground(TargetWidth, TargetHeight);
@@ -125,7 +283,7 @@ public partial class AssaImageColorPickerViewModel : ObservableObject
 
         // Pass exact seconds (not ToDisplayString, which honors the HH:MM:SS:FF time-code format
         // setting and would feed ffmpeg an unparseable "-ss 00:01:23:15", blanking the preview - #12182).
-        var fileName = FfmpegGenerator.GetScreenShot(videoFileName, AssaSetPositionViewModel.GetScreenshotSeconds(line, videoPositionSeconds).ToString("0.###", CultureInfo.InvariantCulture));
+        var fileName = FfmpegGenerator.GetScreenShot(videoFileName, positionSeconds.ToString("0.###", CultureInfo.InvariantCulture));
         if (System.IO.File.Exists(fileName))
         {
             try
@@ -147,6 +305,11 @@ public partial class AssaImageColorPickerViewModel : ObservableObject
     [RelayCommand]
     private async Task Ok()
     {
+        if (IsColorSelection && !HasPickedColor)
+        {
+            return;
+        }
+
         OkPressed = true;
         Close();
     }
@@ -155,23 +318,6 @@ public partial class AssaImageColorPickerViewModel : ObservableObject
     private void Cancel()
     {
         Close();
-    }
-
-    [RelayCommand]
-    private async Task CopyColorToClipboard()
-    {
-        if (Window?.Clipboard != null)
-        {
-            await ClipboardHelper.SetTextAsync(Window, ClickedColorHex);
-
-            // Show check icon temporarily
-            var originalContent = CopyButtonContent;
-            CopyButtonContent = "\u2713 " + Se.Language.General.CopiedToClipboard;
-
-            // Reset after 2 seconds
-            await Task.Delay(2000);
-            CopyButtonContent = originalContent;
-        }
     }
 
     private void Close()
@@ -186,6 +332,7 @@ public partial class AssaImageColorPickerViewModel : ObservableObject
     {
         if (e.Key == Key.Escape)
         {
+            e.Handled = true;
             Close();
         }
         else if (UiUtil.IsHelp(e))
@@ -243,7 +390,13 @@ public partial class AssaImageColorPickerViewModel : ObservableObject
             var color = GetPixelColor(Screenshot, pixelX, pixelY);
             CurrentMouseColor = new SolidColorBrush(color);
             CurrentMouseColorHex = ColorToHex(color);
-            ScreenshotOverlayPosiion = $"X: {pixelX}, Y: {pixelY} - {CurrentMouseColorHex}";
+            CurrentMouseColorRgbHex = ToRgbHex(color);
+            ScreenshotOverlayPosiion = $"X {pixelX} · Y {pixelY}";
+
+            using var magnified = MakeMagnifier(Pixels, pixelX, pixelY);
+            var old = Magnifier;
+            Magnifier = magnified.ToAvaloniaBitmap();
+            old?.Dispose();
         }
     }
 
@@ -271,9 +424,7 @@ public partial class AssaImageColorPickerViewModel : ObservableObject
 
         if (pixelX >= 0 && pixelX < Screenshot.PixelSize.Width && pixelY >= 0 && pixelY < Screenshot.PixelSize.Height)
         {
-            var color = GetPixelColor(Screenshot, pixelX, pixelY);
-            ClickedColor = new SolidColorBrush(color);
-            ClickedColorHex = ColorToHex(color);
+            Pick(GetPixelColor(Screenshot, pixelX, pixelY));
         }
     }
 
@@ -309,4 +460,23 @@ public partial class AssaImageColorPickerViewModel : ObservableObject
     {
         return $"#{color.A:X2}{color.R:X2}{color.G:X2}{color.B:X2}";
     }
+}
+
+/// <summary>
+/// A color in the picker's history.
+/// </summary>
+public sealed class PickedColorItem
+{
+    public Color Color { get; }
+    public IBrush Brush { get; }
+    public string Hex { get; }
+
+    public PickedColorItem(Color color)
+    {
+        Color = color;
+        Brush = new SolidColorBrush(color);
+        Hex = AssaImageColorPickerViewModel.ToRgbHex(color);
+    }
+
+    public override string ToString() => Hex;
 }

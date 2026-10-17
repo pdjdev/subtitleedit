@@ -199,6 +199,11 @@ public partial class NOcrCharacterHistoryViewModel : ObservableObject
             _isControlDown = true;
             NOcrDrawingCanvas.IsControlDown = _isControlDown;
         }
+        else if (UiUtil.IsHelp(e))
+        {
+            e.Handled = true;
+            UiUtil.ShowHelp("features/ocr", "nocr-nikse-ocr");
+        }
     }
 
     public void KeyUp(KeyEventArgs e)
@@ -239,7 +244,7 @@ public partial class NOcrCharacterHistoryViewModel : ObservableObject
         NOcrChar = selectedItem.NOcrChar;
         IsNewTextItalic = NOcrChar.Italic;
         NewText = NOcrChar.Text;
-        LineIndex = string.Format(Se.Language.Ocr.LineIndexX, selectedItem.LineIndex + 1);
+        LineIndex = string.Format(Se.Language.General.LineX, selectedItem.LineIndex + 1);
         ResolutionAndTopMargin = string.Format(Se.Language.Ocr.ResolutionXYAndTopmarginZ, NOcrChar.Width, NOcrChar.Height, NOcrChar.MarginTop);
 
         NOcrDrawingCanvas.BackgroundImage = CurrentBitmap;

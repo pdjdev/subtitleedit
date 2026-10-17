@@ -22,7 +22,6 @@ public class LanguageOcr
     public string NumberOfPixelsIsSpace { get; set; }
     public string InspectImageMatches { get; set; }
     public string ResolutionXYAndTopmarginZ { get; set; }
-    public string RunningOcrDotDotDotXY { get; set; }
     public string RunningOcrDotDotDot { get; set; }
     public string AutoSubmitFirstCharacter { get; set; }
     public string EditNOcrDatabase { get; set; }
@@ -38,12 +37,10 @@ public class LanguageOcr
     public string AddNewCharcter { get; set; }
     public string AddNOcrCharacterTitle { get; set; }
     public string AddBinaryOcrCharacterTitle { get; set; }
-    public string LineIndexX { get; set; }
     public string InspectNOcrAdditions { get; set; }
     public string OcrSelectedLines { get; set; }
     public string FillSelectedLinesWithClipboard { get; set; }
     public string ShowImage { get; set; }
-    public string FixOcrErrors { get; set; }
     public string PromptForUknownWords { get; set; }
     public string TryToGuessUnknownWords { get; set; }
     public string AutoBreakIfMoreThanXLines { get; set; }
@@ -62,7 +59,6 @@ public class LanguageOcr
     public string ClearBackground { get; set; }
     public string ClearForeground { get; set; }
     public string NOcrDrawHelp { get; set; }
-    public string EditWholeText { get; set; }
     public string EditWordOnly { get; set; }
     public string ImagePreProcessing { get; set; }
     public string PreProcessingTitle { get; set; }
@@ -107,7 +103,6 @@ public class LanguageOcr
     public string HtmlExportNoMatches { get; set; }
     public string HtmlExportImageBackground { get; set; }
     public string HtmlExportCheckerboard { get; set; }
-    public string HtmlExportTheme { get; set; }
     public string HtmlExportGeneratedBySubtitleEdit { get; set; }
     public string VobSubColors { get; set; }
     public string VobSubColorsTitle { get; set; }
@@ -138,7 +133,6 @@ public class LanguageOcr
     public string LlamaCppNotDownloaded { get; set; }
     public string LlamaCppReturnedNoText { get; set; }
     public string LlamaCppDownloadEngineAndModelPrompt { get; set; }
-    public string LlamaCppDownloadEnginePrompt { get; set; }
     public string LlamaCppDownloadModelPrompt { get; set; }
     public string CrispEmbedNotDownloaded { get; set; }
     public string CrispEmbedReturnedNoText { get; set; }
@@ -146,9 +140,26 @@ public class LanguageOcr
     public string CrispEmbedSettingsTitle { get; set; }
     public string CrispEmbedDescription { get; set; }
     public string TrainNOcrDatabase { get; set; }
+    public string OptimizeNOcrDatabase { get; set; }
+    public string OptimizeNOcrDatabaseQuestionXY { get; set; }
+    public string OptimizingNOcrDatabaseXY { get; set; }
+    public string NOcrDatabaseOptimizedXYZ { get; set; }
     public string StartTraining { get; set; }
     public string AbortTraining { get; set; }
     public string TrainingOptions { get; set; }
+    public string TrainNOcrSubtitle { get; set; }
+    public string XFontsSelected { get; set; }
+    public string SubtitleFonts { get; set; }
+    public string EmptyDatabase { get; set; }
+    public string StartFromDatabase { get; set; }
+    public string StartFromDatabaseHint { get; set; }
+    public string FontSizes { get; set; }
+    public string FontSizesHint { get; set; }
+    public string NumberOfLineSegmentsHint { get; set; }
+    public string EnterDatabaseName { get; set; }
+    public string TrainingFontXSizeYCharacterZ { get; set; }
+    public string XLearned { get; set; }
+    public string XSkipped { get; set; }
     public string CharactersToTrain { get; set; }
     public string LetterCombinationsToTrain { get; set; }
     public string ImportCharactersFromSubtitleFile { get; set; }
@@ -158,6 +169,10 @@ public class LanguageOcr
     public string TrainingXLearnedYSkipped { get; set; }
     public string TrainingDoneXLearned { get; set; }
     public string SelectAtLeastOneFont { get; set; }
+    public string NOcrZoomIn { get; set; }
+    public string NOcrZoomOut { get; set; }
+    public string NOcrLineAlgorithm { get; set; }
+    public string NOcrLineAlgorithmHint { get; set; }
 
     public LanguageOcr()
     {
@@ -179,7 +194,6 @@ public class LanguageOcr
         NumberOfPixelsIsSpace = "Number of pixels is space";
         InspectImageMatches = "Inspect image matches";
         ResolutionXYAndTopmarginZ = "Resolution {0}x{1}, top margin {2}";
-        RunningOcrDotDotDotXY = "Running OCR... {0}/{1}";
         RunningOcrDotDotDot = "Running OCR...";
         AutoSubmitFirstCharacter = "Auto submit first character";
         EditNOcrDatabase = "Edit nOCR database";
@@ -195,12 +209,10 @@ public class LanguageOcr
         AddNewCharcter = "Add new character";
         AddNOcrCharacterTitle = "Add nOCR character for line {0}, character {1} of {2} using database \"{3}\"";
         AddBinaryOcrCharacterTitle = "Add binary OCR character for line {0}, character {1} of {2} using database \"{3}\"";
-        LineIndexX = "Line {0}";
         InspectNOcrAdditions = "Inspect new nOCR additions";
         OcrSelectedLines = "OCR selected lines";
         FillSelectedLinesWithClipboard = "Fill selected lines with clipboard text";
         ShowImage = "Show image";
-        FixOcrErrors = "Fix OCR errors";
         PromptForUknownWords = "Prompt for unknown words";
         TryToGuessUnknownWords = "Try to guess unknown words";
         AutoBreakIfMoreThanXLines = "Auto break if more than {0} lines";
@@ -219,7 +231,6 @@ public class LanguageOcr
         ClearBackground = "Clear background";
         ClearForeground = "Clear foreground";
         NOcrDrawHelp = "Tips for drawing\r\n────────────────────\r\n• Hold Ctrl down to continue line\r\n• Ctrl+z=undo, Ctrl+y=redo";
-        EditWholeText = "Edit whole text";
         EditWordOnly = "Edit word only";
         ImagePreProcessing = "Image pre-processing";
         PreProcessingTitle = "Pre-processing";
@@ -266,7 +277,6 @@ public class LanguageOcr
         HtmlExportNoMatches = "No lines match the filter";
         HtmlExportImageBackground = "Image background";
         HtmlExportCheckerboard = "Checkerboard";
-        HtmlExportTheme = "Theme";
         HtmlExportGeneratedBySubtitleEdit = "Generated by Subtitle Edit";
         VobSubColors = "VobSub/DVD colors...";
         VobSubColorsTitle = "VobSub/DVD colors";
@@ -300,7 +310,6 @@ public class LanguageOcr
         LlamaCppNotDownloaded = "llama.cpp engine/model not downloaded - download via batch convert settings";
         LlamaCppReturnedNoText = "llama.cpp returned no text - check the server and model";
         LlamaCppDownloadEngineAndModelPrompt = "llama.cpp requires the llama-server engine and the selected OCR model to be downloaded. Download now?";
-        LlamaCppDownloadEnginePrompt = "llama.cpp requires the llama-server engine to be downloaded. Download now?";
         LlamaCppDownloadModelPrompt = "llama.cpp requires the selected OCR model to be downloaded. Download now?";
         CrispEmbedNotDownloaded = "CrispEmbed engine/model not downloaded - download via batch convert settings";
         CrispEmbedReturnedNoText = "CrispEmbed returned no text - check the model";
@@ -309,9 +318,28 @@ public class LanguageOcr
         CrispEmbedDescription = "Local OCR engine with multiple model backends - download the engine and the models here.";
 
         TrainNOcrDatabase = "Train nOCR database...";
+        OptimizeNOcrDatabase = "Optimize nOCR database...";
+        OptimizeNOcrDatabaseQuestionXY = "Remove the lines that don't tell characters apart from similar characters in nOCR database \"{0}\"?" + Environment.NewLine + Environment.NewLine +
+                                         "This makes the database smaller and OCR faster, usually with fewer errors. Takes up to a minute." + Environment.NewLine + Environment.NewLine +
+                                         "A backup is saved as \"{1}\".";
+        OptimizingNOcrDatabaseXY = "Optimizing nOCR database... {0}/{1}";
+        NOcrDatabaseOptimizedXYZ = "nOCR database \"{0}\" optimized: {1:#,##0} -> {2:#,##0} lines.";
         StartTraining = "Start training";
         AbortTraining = "Abort training";
         TrainingOptions = "Training options";
+        TrainNOcrSubtitle = "Renders characters in installed fonts and teaches nOCR their shapes. Pick the fonts your subtitles use.";
+        XFontsSelected = "{0:#,##0} selected";
+        SubtitleFonts = "Subtitle fonts";
+        EmptyDatabase = "Empty database";
+        StartFromDatabase = "Start from";
+        StartFromDatabaseHint = "Add the trained characters to a copy of an existing database (recommended) or start from an empty one";
+        FontSizes = "Font sizes";
+        FontSizesHint = "Font sizes in pixels to render at, separated by commas, e.g. \"30, 40\"";
+        NumberOfLineSegmentsHint = "Lines checked per character - more is stricter but slower";
+        EnterDatabaseName = "Enter a name for the database";
+        TrainingFontXSizeYCharacterZ = "Training \"{0}\" at {1} px: {2}";
+        XLearned = "{0:#,##0} learned";
+        XSkipped = "{0:#,##0} skipped";
         CharactersToTrain = "Characters to train";
         LetterCombinationsToTrain = "Letter combinations that might be split to one image";
         ImportCharactersFromSubtitleFile = "Import characters from subtitle file...";
@@ -321,5 +349,9 @@ public class LanguageOcr
         TrainingXLearnedYSkipped = "Training \"{0}\" - {1:#,##0} characters learned, {2:#,##0} skipped";
         TrainingDoneXLearned = "Training done - {0:#,##0} characters learned";
         SelectAtLeastOneFont = "Please select at least one font";
+        NOcrZoomIn = "Zoom in";
+        NOcrZoomOut = "Zoom out";
+        NOcrLineAlgorithm = "Algorithm";
+        NOcrLineAlgorithmHint = "Algorithm used by Auto-draw to generate foreground/background lines";
     }
 }

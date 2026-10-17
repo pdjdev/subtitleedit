@@ -277,6 +277,16 @@ public static class InitMenu
                         },
                         new MenuItem
                         {
+                            Header = Se.Language.File.Export.TitleExportDCinemaSmpte2014PngMxf,
+                            Command = vm.ExportDCinemaSmpte2014PngMxfCommand,
+                        },
+                        new MenuItem
+                        {
+                            Header = Se.Language.File.Export.TitleExportDCinemaSmpte2014Mxf,
+                            Command = vm.ExportDCinemaSmpte2014MxfCommand,
+                        },
+                        new MenuItem
+                        {
                             Header = Ebu.NameOfFormat,
                             Command = vm.ExportEbuStlCommand,
                         },
@@ -330,6 +340,11 @@ public static class InitMenu
                         {
                             Header = Se.Language.File.Export.PlainTextDotDotDot,
                             Command = vm.ShowExportPlainTextCommand,
+                        },
+                        new MenuItem
+                        {
+                            Header = Se.Language.File.Export.DialogueListDotDotDot,
+                            Command = vm.ShowExportDialogueListCommand,
                         },
                     }
                 },
@@ -387,6 +402,11 @@ public static class InitMenu
                 {
                     Header = l.GoToLineNumber,
                     Command = vm.ShowGoToLineCommand,
+                },
+                new MenuItem
+                {
+                    Header = l.CommandPalette,
+                    Command = vm.ShowCommandPaletteCommand,
                 },
                 new Separator(),
                 new MenuItem
@@ -736,6 +756,7 @@ public static class InitMenu
                 {
                     Header = l.CloseVideoFile,
                     Command = vm.CommandVideoCloseCommand,
+                    [!Visual.IsVisibleProperty] = new Binding(nameof(vm.IsVideoLoaded)),
                 },
                 // Same spot and wording as SE4's Video menu, so it can be found by anyone
                 // looking for it there (#14389). Only meaningful with a video to draw on.
@@ -827,6 +848,11 @@ public static class InitMenu
                 {
                     Header = Se.Language.Video.EmbedSubtitlesDotDotDot,
                     Command = vm.VideoEmbedCommand,
+                },
+                new MenuItem
+                {
+                    Header = Se.Language.Video.SyncAudioTrackDotDotDot,
+                    Command = vm.ShowSyncAudioTrackCommand,
                 },
                 new Separator(),
                 new MenuItem

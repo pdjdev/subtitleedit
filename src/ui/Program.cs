@@ -242,13 +242,23 @@ namespace Nikse.SubtitleEdit
                     })
                     .With(new AvaloniaNativePlatformOptions
                     {
-                        RenderingMode =
-                        [
-                            // put OpenGL first, to have higher priority over Metal
-                            AvaloniaNativeRenderingMode.OpenGl,
-                            AvaloniaNativeRenderingMode.Metal,
-                            AvaloniaNativeRenderingMode.Software
-                        ]
+                        // OpenGL first, because the default mpv player (LibMpvDynamicOpenGlControl)
+                        // needs an OpenGL compositor. The experimental mpv Metal player renders mpv
+                        // into IOSurfaces instead and needs the Metal compositor, so it gets Metal
+                        // first (choosing it takes a restart).
+                        RenderingMode = Se.Settings.Video.VideoPlayer.Equals(VideoPlayerName.MpvMetal, StringComparison.OrdinalIgnoreCase)
+                            ?
+                            [
+                                AvaloniaNativeRenderingMode.Metal,
+                                AvaloniaNativeRenderingMode.OpenGl,
+                                AvaloniaNativeRenderingMode.Software
+                            ]
+                            :
+                            [
+                                AvaloniaNativeRenderingMode.OpenGl,
+                                AvaloniaNativeRenderingMode.Metal,
+                                AvaloniaNativeRenderingMode.Software
+                            ]
                     })
                     .AfterSetup(b => ConfigureApplication(b, lifetime))
                     .SetupWithLifetime(lifetime);
@@ -469,6 +479,9 @@ namespace Nikse.SubtitleEdit
 
             // Shift+Delete cut in every text box, in every window (#13711).
             NativeKeymap.AddShiftDeleteCut();
+
+            // Context menus kept their first, too small size (#15965).
+            PointerPopupPlacement.Initialize();
         }
 
         private static void SetupNativeMenu(Application app, ClassicDesktopStyleApplicationLifetime lifetime)

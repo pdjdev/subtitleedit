@@ -90,6 +90,11 @@ public static class InitVideoPlayer
         }
 
         control.FullScreenCommand = vm.VideoFullScreenCommand;
+        control.PreviousSubtitleCommand = vm.PlayPreviousCommand;
+        control.NextSubtitleCommand = vm.PlayNextCommand;
+        control.ToggleSubtitlesCommand = vm.ToggleSubtitlesOnVideoPlayerCommand;
+        control.SubtitlesOnVideoIsVisible = vm.SubtitlesOnVideoPlayerVisible;
+        control.SubtitleButtonsIsVisible = true;
         videoPlayerControl = control;
         vm.VideoPlayerControl = control;
         control.VideoPlayerDisplayTimeLeft = Se.Settings.Video.VideoPlayerDisplayTimeLeft;
@@ -160,6 +165,16 @@ public static class InitVideoPlayer
                 if (player.CanLoad())
                 {
                     var view = new LibMpvDynamicSoftwareControl(player);
+                    return MakeVideoPlayerControl(player, view);
+                }
+            }
+
+            if (OperatingSystem.IsMacOS() && Se.Settings.Video.VideoPlayer.Equals(VideoPlayerName.MpvMetal, StringComparison.OrdinalIgnoreCase))
+            {
+                var player = new LibMpvDynamicPlayer();
+                if (player.CanLoad())
+                {
+                    var view = new LibMpvDynamicIoSurfaceControl(player);
                     return MakeVideoPlayerControl(player, view);
                 }
             }
