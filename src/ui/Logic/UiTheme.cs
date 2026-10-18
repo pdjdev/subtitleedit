@@ -152,6 +152,8 @@ public static class UiTheme
             Application.Current!.RequestedThemeVariant = ThemeVariant.Light;
         }
 
+        // Classic/Pastel and custom colors can change without a light/dark variant change.
+        EditorChrome.RefreshTheme();
         ApplyFieldStyle();
         ApplyMenuScaleStyle(Se.Settings.Appearance.LayoutScale);
         ApplyTextSelectionStyle();
@@ -181,6 +183,7 @@ public static class UiTheme
             ApplyLighterDark();
         }
 
+        EditorChrome.RefreshTheme();
         ApplyFieldStyle();
         ApplyTextSelectionStyle();
         ApplyProgressBarContrastStyle();
