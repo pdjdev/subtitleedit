@@ -103,8 +103,9 @@ public class EditorChromeThemeTests
     [AvaloniaFact]
     public void PrimaryButton_UsesTheSameTemplateColorsAsARegularButton()
     {
-        var regular = new Button { Content = "Cancel" };
-        var primary = new Button { Content = "OK" };
+        // Avoid focus-state differences: the test compares the normal button surfaces.
+        var regular = new Button { Content = "Cancel", Focusable = false };
+        var primary = new Button { Content = "OK", Focusable = false };
         primary.Classes.Add("primary");
         var window = new Window
         {
