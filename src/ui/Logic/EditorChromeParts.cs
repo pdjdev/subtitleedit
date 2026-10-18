@@ -378,7 +378,7 @@ internal static partial class EditorChrome
 
     private static void AddPrimarySplitButtonStyles(Styles styles, bool mutedWhenDisabled)
     {
-        // A split button as the main action: both halves in the accent
+        // A split button as the main action: use the application's button colors.
         foreach (var isHover in new[] { false, true })
         {
             styles.Add(new Style(x =>
@@ -391,8 +391,8 @@ internal static partial class EditorChrome
             {
                 Setters =
                 {
-                    new Setter(ContentPresenter.BackgroundProperty, isHover ? AccentHoverBrush : AccentBrush),
-                    new Setter(ContentPresenter.ForegroundProperty, Brushes.White),
+                    new Setter(ContentPresenter.BackgroundProperty, isHover ? ButtonHoverBrush : ButtonBrush),
+                    new Setter(ContentPresenter.ForegroundProperty, ButtonTextBrush),
                 },
             });
         }
