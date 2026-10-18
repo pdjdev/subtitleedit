@@ -44,6 +44,31 @@ public class EditorChromeThemeTests
     }
 
     [AvaloniaFact]
+    public void PaletteUsesTheApplicationThemeInsteadOfFixedEditorColors()
+    {
+        var app = Application.Current!;
+        var previousVariant = app.RequestedThemeVariant;
+        try
+        {
+            // The window background must be the same as the existing application theme.
+            app.RequestedThemeVariant = ThemeVariant.Light;
+            Assert.Equal(UiTheme.GetThemeBackgroundColor(),
+                Assert.IsAssignableFrom<ISolidColorBrush>(EditorChrome.WindowBrush).Color);
+
+            // Selection and active controls should reuse Fluent's existing accent.
+            if (app.TryGetResource("SystemAccentColor", app.ActualThemeVariant, out var resource) &&
+                resource is Color accent)
+            {
+                Assert.Equal(accent, Assert.IsAssignableFrom<ISolidColorBrush>(EditorChrome.AccentBrush).Color);
+            }
+        }
+        finally
+        {
+            app.RequestedThemeVariant = previousVariant;
+        }
+    }
+
+    [AvaloniaFact]
     public void OpenWindow_SemanticColorOutsideThePalette_FollowsAThemeChange()
     {
         var application = Application.Current!;
