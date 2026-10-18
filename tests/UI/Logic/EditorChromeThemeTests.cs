@@ -8,6 +8,7 @@ using Avalonia.Styling;
 using Avalonia.Threading;
 using Nikse.SubtitleEdit.Features.Tools.FixCommonErrors;
 using Nikse.SubtitleEdit.Logic;
+using Nikse.SubtitleEdit.Logic.Config;
 
 namespace UITests.Logic;
 
@@ -65,6 +66,34 @@ public class EditorChromeThemeTests
         finally
         {
             app.RequestedThemeVariant = previousVariant;
+        }
+    }
+
+    [AvaloniaFact]
+    public void PaletteRefreshesWhenThemeChangesWithoutVariantChange()
+    {
+        var application = Application.Current!;
+        var previousTheme = Se.Settings.Appearance.Theme;
+        var previousVariant = application.RequestedThemeVariant;
+        try
+        {
+            application.RequestedThemeVariant = ThemeVariant.Light;
+            Se.Settings.Appearance.Theme = UiTheme.ThemeNameLight;
+            EditorChrome.RefreshTheme();
+            var brush = Assert.IsAssignableFrom<ISolidColorBrush>(EditorChrome.WindowBrush);
+            Assert.Equal(Colors.White, brush.Color);
+
+            Se.Settings.Appearance.Theme = UiTheme.ThemeNameClassic;
+            EditorChrome.RefreshTheme();
+
+            Assert.Same(brush, EditorChrome.WindowBrush);
+            Assert.Equal(Color.FromRgb(236, 233, 216), brush.Color);
+        }
+        finally
+        {
+            Se.Settings.Appearance.Theme = previousTheme;
+            application.RequestedThemeVariant = previousVariant;
+            EditorChrome.RefreshTheme();
         }
     }
 
