@@ -54,7 +54,7 @@ internal enum EditorWindowStyles
     /// <summary>A disabled primary button drops the accent (it looked clickable).</summary>
     MuteDisabledPrimary = 1 << 9,
 
-    /// <summary>A split button with class "primary" in the accent (muted when disabled with <see cref="MuteDisabledPrimary"/>).</summary>
+    /// <summary>A split button with class "primary" (muted when disabled with <see cref="MuteDisabledPrimary"/>).</summary>
     PrimarySplitButton = 1 << 10,
 
     /// <summary>Small tab headers (34px) instead of the big Fluent ones.</summary>
@@ -378,24 +378,7 @@ internal static partial class EditorChrome
 
     private static void AddPrimarySplitButtonStyles(Styles styles, bool mutedWhenDisabled)
     {
-        // A split button as the main action: use the application's button colors.
-        foreach (var isHover in new[] { false, true })
-        {
-            styles.Add(new Style(x =>
-            {
-                var selector = x.OfType<SplitButton>().Class("primary").Template().OfType<Button>();
-                return isHover
-                    ? selector.Class(":pointerover").Template().OfType<ContentPresenter>()
-                    : selector.Template().OfType<ContentPresenter>();
-            })
-            {
-                Setters =
-                {
-                    new Setter(ContentPresenter.BackgroundProperty, isHover ? ButtonHoverBrush : ButtonBrush),
-                    new Setter(ContentPresenter.ForegroundProperty, ButtonTextBrush),
-                },
-            });
-        }
+        // Keep the Fluent SplitButton visuals. Only mute the action while disabled.
 
         if (mutedWhenDisabled)
         {
@@ -523,7 +506,8 @@ internal static partial class EditorChrome
     // ---- Buttons ----
 
     /// <summary>
-    /// Marks <paramref name="button"/> as the window's accent primary (OK, Generate, Done, ...).
+    /// Marks <paramref name="button"/> as the main action (OK, Generate, Done, ...).
+    /// Its colors come from the native Fluent button template.
     /// </summary>
     internal static T AsPrimary<T>(this T button) where T : Button
     {
