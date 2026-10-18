@@ -21,22 +21,14 @@ namespace Nikse.SubtitleEdit.Logic;
 /// </summary>
 internal static partial class EditorChrome
 {
-    // The editor palette, in a dark and a light version. Each color is one shared brush whose color
-    // follows the app theme (also when it changes while windows are open), so everything built
-    // from it repaints without rebuilding. Accent colors are the same in both.
+    // Use the same background, foreground, and accent as the application theme.
+    // Surface shades are neutral blends of these colors, not a second blue-tinted palette.
+    // These shared brushes also refresh when settings change without a light/dark switch.
     internal static bool IsLightTheme => Application.Current?.ActualThemeVariant == ThemeVariant.Light;
 
-    /// <summary>
-    /// Text and icons on hover - white on the dark palette, near black on the light one.
-    /// </summary>
     internal static IBrush StrongTextBrush => StrongTextColor.Brush;
-
-    /// <summary>
-    /// Shape thumbnails (shape library, box and bar styles): light gray on dark, dark gray on light.
-    /// </summary>
     internal static IBrush ThumbnailBrush => ThumbnailColor.Brush;
     internal static IBrush ThumbnailMutedBrush => ThumbnailMutedColor.Brush;
-
     internal static IBrush WindowBrush => WindowColor.Brush;
     internal static IBrush PanelBrush => PanelColor.Brush;
     internal static IBrush StatusBrush => StatusColor.Brush;
@@ -55,34 +47,109 @@ internal static partial class EditorChrome
     internal static IBrush FieldBorderBrush => FieldBorderColor.Brush;
     internal static IBrush MenuBrush => MenuColor.Brush;
     internal static IBrush MenuBorderBrush => MenuBorderColor.Brush;
-
-    /// <summary>
-    /// Text on an AccentSoftBrush badge (counts): white on dark, accent on light.
-    /// </summary>
     internal static IBrush BadgeTextBrush => BadgeTextColor.Brush;
+    internal static IBrush ButtonBrush => ButtonColor.Brush;
+    internal static IBrush ButtonHoverBrush => ButtonHoverColor.Brush;
+    internal static IBrush ButtonTextBrush => ButtonTextColor.Brush;
 
-    private static readonly ThemedBrush StrongTextColor = new(Colors.White, Colors.Black);
-    private static readonly ThemedBrush ThumbnailColor = new(Color.FromRgb(214, 218, 226), Color.FromRgb(72, 78, 92));
-    private static readonly ThemedBrush ThumbnailMutedColor = new(Color.FromRgb(96, 102, 116), Color.FromRgb(188, 193, 204));
-    private static readonly ThemedBrush WindowColor = new(Color.FromRgb(30, 31, 36), Color.FromRgb(243, 244, 247));
-    private static readonly ThemedBrush PanelColor = new(Color.FromRgb(36, 38, 44), Color.FromRgb(250, 250, 252));
-    private static readonly ThemedBrush StatusColor = new(Color.FromRgb(27, 28, 33), Color.FromRgb(236, 238, 242));
-    private static readonly ThemedBrush ButtonBarColor = new(Color.FromRgb(32, 34, 39), Color.FromRgb(238, 240, 244));
-    private static readonly ThemedBrush LineColor = new(Color.FromRgb(47, 50, 58), Color.FromRgb(222, 225, 232));
-    private static readonly ThemedBrush SeparatorColor = new(Color.FromRgb(55, 58, 67), Color.FromRgb(208, 212, 220));
-    private static readonly ThemedBrush DimTextColor = new(Color.FromRgb(140, 146, 160), Color.FromRgb(92, 98, 112));
-    private static readonly ThemedBrush FaintTextColor = new(Color.FromRgb(111, 117, 131), Color.FromRgb(122, 128, 142));
-    private static readonly ThemedBrush IconColor = new(Color.FromRgb(174, 180, 194), Color.FromRgb(70, 76, 90));
-    private static readonly ThemedBrush HoverColor = new(Color.FromRgb(51, 54, 63), Color.FromRgb(226, 229, 236));
-    private static readonly ThemedBrush PressedColor = new(Color.FromRgb(59, 62, 71), Color.FromRgb(214, 218, 227));
-    private static readonly ThemedBrush AccentColor = new(Color.FromRgb(76, 110, 245), Color.FromRgb(76, 110, 245));
-    private static readonly ThemedBrush AccentHoverColor = new(Color.FromRgb(92, 124, 250), Color.FromRgb(92, 124, 250));
-    private static readonly ThemedBrush AccentSoftColor = new(Color.FromArgb(70, 76, 110, 245), Color.FromArgb(46, 76, 110, 245));
-    private static readonly ThemedBrush FieldColor = new(Color.FromRgb(27, 28, 33), Color.FromRgb(255, 255, 255));
-    private static readonly ThemedBrush FieldBorderColor = new(Color.FromRgb(54, 57, 68), Color.FromRgb(204, 209, 219));
-    private static readonly ThemedBrush MenuColor = new(Color.FromRgb(42, 44, 51), Color.FromRgb(255, 255, 255));
-    private static readonly ThemedBrush MenuBorderColor = new(Color.FromRgb(66, 69, 79), Color.FromRgb(208, 212, 220));
-    private static readonly ThemedBrush BadgeTextColor = new(Colors.White, Color.FromRgb(76, 110, 245));
+    private static Color Background => UiTheme.GetThemeBackgroundColor();
+    private static Color Foreground => UiTheme.IsDarkThemeEnabled() ? UiTheme.GetDarkThemeForegroundColor() : Colors.Black;
+
+    private static Color Blend(Color from, Color to, double amount) =>
+        Color.FromRgb(
+            (byte)Math.Round(from.R + (to.R - from.R) * amount),
+            (byte)Math.Round(from.G + (to.G - from.G) * amount),
+            (byte)Math.Round(from.B + (to.B - from.B) * amount));
+
+    private static Color Surface(double darkAmount, double lightAmount) =>
+        Blend(Background, Foreground, IsLightTheme ? lightAmount : darkAmount);
+
+    // Match the field and button backgrounds of the existing Classic/Pastel themes, too.
+    private static Color FieldBackground => UiTheme.ThemeName switch
+    {
+        UiTheme.ThemeNameClassic => Color.FromRgb(255, 255, 250),
+        UiTheme.ThemeNamePastel => Color.FromRgb(251, 249, 255),
+        UiTheme.ThemeNameDark => Background,
+        _ => Colors.White,
+    };
+
+    private static Color Accent => ThemeColor("SystemAccentColor", Colors.DodgerBlue);
+
+    private static Color ThemeColor(string key, Color fallback)
+    {
+        var app = Application.Current;
+        if (app != null && app.TryGetResource(key, app.ActualThemeVariant, out var resource))
+        {
+            if (resource is Color color)
+            {
+                return color;
+            }
+
+            if (resource is ISolidColorBrush brush)
+            {
+                return brush.Color;
+            }
+        }
+
+        return fallback;
+    }
+
+    private static Color NativeButtonBackground
+    {
+        get
+        {
+            var theme = UiTheme.ThemeName;
+            if (theme == UiTheme.ThemeNameClassic)
+            {
+                return Color.FromRgb(212, 208, 200);
+            }
+
+            if (theme == UiTheme.ThemeNamePastel)
+            {
+                return Color.FromRgb(227, 216, 250);
+            }
+
+            return ThemeColor("ButtonBackground", Surface(0.14, 0.07));
+        }
+    }
+
+    private static Color NativeButtonHover =>
+        UiTheme.ThemeName == UiTheme.ThemeNamePastel
+            ? Color.FromRgb(214, 199, 247)
+            : UiTheme.ThemeName == UiTheme.ThemeNameClassic
+                ? Blend(NativeButtonBackground, Foreground, 0.07)
+                : ThemeColor("ButtonBackgroundPointerOver", Blend(NativeButtonBackground, Foreground, 0.07));
+
+    private static readonly ThemedBrush StrongTextColor = new(() => Foreground);
+    private static readonly ThemedBrush ThumbnailColor = new(() => Surface(0.84, 0.76));
+    private static readonly ThemedBrush ThumbnailMutedColor = new(() => Surface(0.38, 0.25));
+    private static readonly ThemedBrush WindowColor = new(() => Background);
+    private static readonly ThemedBrush PanelColor = new(() => Surface(0.04, 0.02));
+    private static readonly ThemedBrush StatusColor = new(() => Blend(Background, Colors.Black, IsLightTheme ? 0.045 : 0.16));
+    private static readonly ThemedBrush ButtonBarColor = new(() => Surface(0.05, 0.04));
+    private static readonly ThemedBrush LineColor = new(() => Surface(0.13, 0.16));
+    private static readonly ThemedBrush SeparatorColor = new(() => Surface(0.20, 0.22));
+    private static readonly ThemedBrush DimTextColor = new(() => Surface(0.62, 0.56));
+    private static readonly ThemedBrush FaintTextColor = new(() => Surface(0.48, 0.46));
+    private static readonly ThemedBrush IconColor = new(() => Surface(0.84, 0.74));
+    private static readonly ThemedBrush HoverColor = new(() => Surface(0.10, 0.065));
+    private static readonly ThemedBrush PressedColor = new(() => Surface(0.14, 0.11));
+    private static readonly ThemedBrush AccentColor = new(() => Accent);
+    private static readonly ThemedBrush AccentHoverColor = new(() =>
+        ThemeColor(IsLightTheme ? "SystemAccentColorDark1" : "SystemAccentColorLight1",
+            Blend(Accent, IsLightTheme ? Colors.Black : Colors.White, 0.12)));
+    private static readonly ThemedBrush AccentSoftColor = new(() =>
+        Color.FromArgb(IsLightTheme ? (byte)46 : (byte)70, Accent.R, Accent.G, Accent.B));
+    private static readonly ThemedBrush FieldColor = new(() => FieldBackground);
+    private static readonly ThemedBrush FieldBorderColor = new(() => Surface(0.15, 0.19));
+    private static readonly ThemedBrush MenuColor = new(() => IsLightTheme ? FieldBackground : Background);
+    private static readonly ThemedBrush MenuBorderColor = new(() => Surface(0.20, 0.17));
+    private static readonly ThemedBrush BadgeTextColor = new(() => IsLightTheme ? Accent : Foreground);
+    private static readonly ThemedBrush ButtonColor = new(() => NativeButtonBackground);
+    private static readonly ThemedBrush ButtonHoverColor = new(() => NativeButtonHover);
+    private static readonly ThemedBrush ButtonTextColor = new(() => Foreground);
+
+    internal static void RefreshTheme() => ThemedBrush.RefreshAll();
 
     /// <summary>
     /// A brush outside the palette that also follows the app theme (e.g. a status color with a
@@ -101,6 +168,7 @@ internal static partial class EditorChrome
 
         private readonly Color _dark;
         private readonly Color _light;
+        private readonly Func<Color>? _resolver;
         private readonly SolidColorBrush _brush;
 
         public ThemedBrush(Color dark, Color light)
@@ -108,6 +176,16 @@ internal static partial class EditorChrome
             _dark = dark;
             _light = light;
             _brush = new SolidColorBrush(dark);
+            lock (All)
+            {
+                All.Add(this);
+            }
+        }
+
+        public ThemedBrush(Func<Color> resolver)
+        {
+            _resolver = resolver;
+            _brush = new SolidColorBrush(Colors.Transparent);
             lock (All)
             {
                 All.Add(this);
@@ -133,7 +211,7 @@ internal static partial class EditorChrome
 
         private void Refresh()
         {
-            var color = IsLightTheme ? _light : _dark;
+            var color = _resolver != null ? _resolver() : IsLightTheme ? _light : _dark;
             if (_brush.Color != color)
             {
                 _brush.Color = color;
@@ -149,19 +227,26 @@ internal static partial class EditorChrome
             }
 
             _hookedApplication = application;
-            application.ActualThemeVariantChanged += (_, _) =>
-            {
-                ThemedBrush[] entries;
-                lock (All)
-                {
-                    entries = All.ToArray();
-                }
+            application.ActualThemeVariantChanged += (_, _) => RefreshAll();
+        }
 
-                foreach (var entry in entries)
-                {
-                    entry.Refresh();
-                }
-            };
+        internal static void RefreshAll()
+        {
+            if (!Dispatcher.UIThread.CheckAccess())
+            {
+                return;
+            }
+
+            ThemedBrush[] entries;
+            lock (All)
+            {
+                entries = All.ToArray();
+            }
+
+            foreach (var entry in entries)
+            {
+                entry.Refresh();
+            }
         }
     }
 
@@ -203,11 +288,11 @@ internal static partial class EditorChrome
         styles.Add(ToolPresenter(x => x.OfType<Button>().Class("tool").Class("active").Class(":pointerover"),
             (ContentPresenter.BackgroundProperty, AccentHoverBrush), (ContentPresenter.ForegroundProperty, Brushes.White)));
 
-        // Primary button (OK) in the editor accent
+        // Primary buttons keep the selected app theme's regular button colors.
         styles.Add(ToolPresenter(x => x.OfType<Button>().Class("primary"),
-            (ContentPresenter.BackgroundProperty, AccentBrush), (ContentPresenter.ForegroundProperty, Brushes.White)));
+            (ContentPresenter.BackgroundProperty, ButtonBrush), (ContentPresenter.ForegroundProperty, ButtonTextBrush)));
         styles.Add(ToolPresenter(x => x.OfType<Button>().Class("primary").Class(":pointerover"),
-            (ContentPresenter.BackgroundProperty, AccentHoverBrush), (ContentPresenter.ForegroundProperty, Brushes.White)));
+            (ContentPresenter.BackgroundProperty, ButtonHoverBrush), (ContentPresenter.ForegroundProperty, ButtonTextBrush)));
 
         // Compact number fields
         styles.Add(new Style(x => x.OfType<NumericUpDown>().Class("field"))
