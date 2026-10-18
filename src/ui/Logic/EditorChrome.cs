@@ -48,9 +48,6 @@ internal static partial class EditorChrome
     internal static IBrush MenuBrush => MenuColor.Brush;
     internal static IBrush MenuBorderBrush => MenuBorderColor.Brush;
     internal static IBrush BadgeTextBrush => BadgeTextColor.Brush;
-    internal static IBrush ButtonBrush => ButtonColor.Brush;
-    internal static IBrush ButtonHoverBrush => ButtonHoverColor.Brush;
-    internal static IBrush ButtonTextBrush => ButtonTextColor.Brush;
 
     private static Color Background => UiTheme.GetThemeBackgroundColor();
     private static Color Foreground => UiTheme.IsDarkThemeEnabled() ? UiTheme.GetDarkThemeForegroundColor() : Colors.Black;
@@ -94,32 +91,6 @@ internal static partial class EditorChrome
         return fallback;
     }
 
-    private static Color NativeButtonBackground
-    {
-        get
-        {
-            var theme = UiTheme.ThemeName;
-            if (theme == UiTheme.ThemeNameClassic)
-            {
-                return Color.FromRgb(212, 208, 200);
-            }
-
-            if (theme == UiTheme.ThemeNamePastel)
-            {
-                return Color.FromRgb(227, 216, 250);
-            }
-
-            return ThemeColor("ButtonBackground", Surface(0.14, 0.07));
-        }
-    }
-
-    private static Color NativeButtonHover =>
-        UiTheme.ThemeName == UiTheme.ThemeNamePastel
-            ? Color.FromRgb(214, 199, 247)
-            : UiTheme.ThemeName == UiTheme.ThemeNameClassic
-                ? Blend(NativeButtonBackground, Foreground, 0.07)
-                : ThemeColor("ButtonBackgroundPointerOver", Blend(NativeButtonBackground, Foreground, 0.07));
-
     private static readonly ThemedBrush StrongTextColor = new(() => Foreground);
     private static readonly ThemedBrush ThumbnailColor = new(() => Surface(0.84, 0.76));
     private static readonly ThemedBrush ThumbnailMutedColor = new(() => Surface(0.38, 0.25));
@@ -145,9 +116,6 @@ internal static partial class EditorChrome
     private static readonly ThemedBrush MenuColor = new(() => IsLightTheme ? FieldBackground : Background);
     private static readonly ThemedBrush MenuBorderColor = new(() => Surface(0.20, 0.17));
     private static readonly ThemedBrush BadgeTextColor = new(() => IsLightTheme ? Accent : Foreground);
-    private static readonly ThemedBrush ButtonColor = new(() => NativeButtonBackground);
-    private static readonly ThemedBrush ButtonHoverColor = new(() => NativeButtonHover);
-    private static readonly ThemedBrush ButtonTextColor = new(() => Foreground);
 
     internal static void RefreshTheme() => ThemedBrush.RefreshAll();
 
@@ -288,11 +256,10 @@ internal static partial class EditorChrome
         styles.Add(ToolPresenter(x => x.OfType<Button>().Class("tool").Class("active").Class(":pointerover"),
             (ContentPresenter.BackgroundProperty, AccentHoverBrush), (ContentPresenter.ForegroundProperty, Brushes.White)));
 
-        // Primary buttons keep the selected app theme's regular button colors.
-        styles.Add(ToolPresenter(x => x.OfType<Button>().Class("primary"),
-            (ContentPresenter.BackgroundProperty, ButtonBrush), (ContentPresenter.ForegroundProperty, ButtonTextBrush)));
-        styles.Add(ToolPresenter(x => x.OfType<Button>().Class("primary").Class(":pointerover"),
-            (ContentPresenter.BackgroundProperty, ButtonHoverBrush), (ContentPresenter.ForegroundProperty, ButtonTextBrush)));
+        // Primary actions use the normal Fluent button template, including its
+        // foreground/background and hover/focus colors. Do not override the inner
+        // ContentPresenter: the Fluent ButtonBackground resources can be black/white
+        // independently of the effective button surface.
 
         // Compact number fields
         styles.Add(new Style(x => x.OfType<NumericUpDown>().Class("field"))
