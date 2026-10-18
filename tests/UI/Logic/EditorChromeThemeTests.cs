@@ -88,6 +88,8 @@ public class EditorChromeThemeTests
 
             Assert.Same(brush, EditorChrome.WindowBrush);
             Assert.Equal(Color.FromRgb(236, 233, 216), brush.Color);
+            Assert.Equal(Color.FromRgb(212, 208, 200),
+                Assert.IsAssignableFrom<ISolidColorBrush>(EditorChrome.ButtonBrush).Color);
         }
         finally
         {
