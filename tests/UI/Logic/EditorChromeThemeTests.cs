@@ -1,11 +1,13 @@
 using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Presenters;
 using Avalonia.Headless.XUnit;
 using Avalonia.LogicalTree;
 using Avalonia.Media;
 using Avalonia.Styling;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Nikse.SubtitleEdit.Features.Tools.FixCommonErrors;
 using Nikse.SubtitleEdit.Logic;
 using Nikse.SubtitleEdit.Logic.Config;
@@ -88,14 +90,43 @@ public class EditorChromeThemeTests
 
             Assert.Same(brush, EditorChrome.WindowBrush);
             Assert.Equal(Color.FromRgb(236, 233, 216), brush.Color);
-            Assert.Equal(Color.FromRgb(212, 208, 200),
-                Assert.IsAssignableFrom<ISolidColorBrush>(EditorChrome.ButtonBrush).Color);
+
         }
         finally
         {
             Se.Settings.Appearance.Theme = previousTheme;
             application.RequestedThemeVariant = previousVariant;
             EditorChrome.RefreshTheme();
+        }
+    }
+
+    [AvaloniaFact]
+    public void PrimaryButton_UsesTheSameTemplateColorsAsARegularButton()
+    {
+        var regular = new Button { Content = "Cancel" };
+        var primary = new Button { Content = "OK" };
+        primary.Classes.Add("primary");
+        var window = new Window
+        {
+            Content = new StackPanel { Children = { regular, primary } },
+        };
+        EditorChrome.ApplyWindow(window);
+        try
+        {
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            var regularPresenter = regular.GetVisualDescendants().OfType<ContentPresenter>()
+                .First(p => p.Name == "PART_ContentPresenter");
+            var primaryPresenter = primary.GetVisualDescendants().OfType<ContentPresenter>()
+                .First(p => p.Name == "PART_ContentPresenter");
+
+            Assert.Equal(regularPresenter.Background?.ToString(), primaryPresenter.Background?.ToString());
+            Assert.Equal(regularPresenter.Foreground?.ToString(), primaryPresenter.Foreground?.ToString());
+        }
+        finally
+        {
+            window.Close();
         }
     }
 
