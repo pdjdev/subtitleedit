@@ -30,6 +30,7 @@ public class SeGeneral
     public string DialogStyle { get; set; }
     public string ContinuationStyle { get; set; }
     public string CpsLineLengthStrategy { get; set; }
+    public string CpsLineLengthIgnoreTagsRegex { get; set; }
 
     public CustomContinuationStyle CustomContinuationStyle { get; set; }
     public bool FixContinuationStyleUncheckInsertsAllCaps { get; set; }
@@ -91,6 +92,7 @@ public class SeGeneral
     public string SubtitleDoubleClickAction { get; set; }
     public bool SubtitleGridCenterSelectedRow { get; set; }
     public string SaveAsBehavior { get; set; }
+    public string FileChangedOutsideAction { get; set; }
     public string SaveAsAppendLanguageCode { get; set; }
     public string DefaultSaveLocation { get; set; }
     public string DefaultSaveLocationCustomFolder { get; set; }
@@ -275,6 +277,7 @@ public class SeGeneral
         SubtitleMaximumWordsPerMinute = 400;
         DialogStyle = DialogType.DashBothLinesWithSpace.ToString();
         CpsLineLengthStrategy = nameof(CalcAll);
+        CpsLineLengthIgnoreTagsRegex = string.Empty;
         ContinuationStyle = Core.Enums.ContinuationStyle.None.ToString();
         CustomContinuationStyle = new CustomContinuationStyle();
         FixContinuationStyleUncheckInsertsAllCaps = true;
@@ -314,6 +317,7 @@ public class SeGeneral
         SubtitleDoubleClickAction = nameof(SubtitleDoubleClickActionType.GoToSubtitleAndPause);
         SubtitleGridCenterSelectedRow = false;
         SaveAsBehavior = nameof(SaveAsBehaviourType.UseVideoFileNameThenSubtitleFileName);
+        FileChangedOutsideAction = nameof(FileChangedOutsideActionType.ReloadWhenUnmodified);
         DefaultSaveLocation = nameof(DefaultSaveLocationType.SourceFileFolder);
         DefaultSaveLocationCustomFolder = string.Empty;
         SaveAsAppendLanguageCode = nameof(SaveAsLanguageAppendType.None);
@@ -340,6 +344,7 @@ public class SeGeneral
         FavoriteSubtitleFormats = new SubRip().FriendlyName + ";" + new AdvancedSubStationAlpha().FriendlyName;
         FavoriteLanguages = string.Empty;
         CpsLineLengthStrategy = nameof(CalcAll);
+        CpsLineLengthIgnoreTagsRegex = string.Empty;
         RememberPositionAndSize = true;
 
         ColorDurationTooShort = true;

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
@@ -125,6 +125,21 @@ internal static partial class EditorChrome
     }
 
     /// <summary>
+    /// A combo box's selected item too long for the box ended in a cut-off letter ("United States]");
+    /// this ends it in "..." instead.
+    /// </summary>
+    internal static void AddComboBoxEllipsisStyle(Styles styles)
+    {
+        styles.Add(new Style(x => x.OfType<ComboBox>().Template().OfType<ContentControl>().Name("ContentPresenter").Descendant().OfType<TextBlock>())
+        {
+            Setters =
+            {
+                new Setter(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis),
+            },
+        });
+    }
+
+    /// <summary>
     /// The styles of <see cref="ApplyWindow"/> without the window background.
     /// </summary>
     internal static void AddWindowStyles(Styles styles, EditorWindowStyles extra = EditorWindowStyles.None)
@@ -138,6 +153,39 @@ internal static partial class EditorChrome
                 new Setter(TemplatedControl.MinHeightProperty, 28.0),
                 new Setter(TemplatedControl.PaddingProperty, new Thickness(8, 2, 4, 2)),
                 new Setter(TemplatedControl.CornerRadiusProperty, new CornerRadius(6)),
+            },
+        });
+
+        AddComboBoxEllipsisStyle(styles);
+
+        // A disabled text box was a light gray slab on the dark panels (the theme's disabled
+        // brush); keep the field look, dimmed, like the disabled number fields
+        styles.Add(new Style(x => x.OfType<TextBox>().Class(":disabled").Template().OfType<Border>().Name("PART_BorderElement"))
+        {
+            Setters =
+            {
+                new Setter(Border.BackgroundProperty, FieldBrush),
+                new Setter(Border.BorderBrushProperty, Brushes.Transparent),
+            },
+        });
+        styles.Add(new Style(x => x.OfType<TextBox>().Class(":disabled"))
+        {
+            Setters =
+            {
+                new Setter(Visual.OpacityProperty, 0.5),
+            },
+        });
+
+        // An editable combo box's text sat at the top of the 28 px box (the theme's text box keeps
+        // its own top-aligned padding); center it like a read-only combo's selected item
+        styles.Add(new Style(x => x.OfType<ComboBox>().Template().OfType<TextBox>().Name("PART_EditableTextBox"))
+        {
+            Setters =
+            {
+                new Setter(Layoutable.VerticalAlignmentProperty, VerticalAlignment.Center),
+                new Setter(TextBox.VerticalContentAlignmentProperty, VerticalAlignment.Center),
+                new Setter(TemplatedControl.PaddingProperty, new Thickness(0)),
+                new Setter(Layoutable.MinHeightProperty, 0.0),
             },
         });
 
@@ -344,7 +392,7 @@ internal static partial class EditorChrome
                 Setters =
                 {
                     new Setter(ContentPresenter.BackgroundProperty, isHover ? AccentHoverBrush : AccentBrush),
-                    new Setter(ContentPresenter.ForegroundProperty, Brushes.White),
+                    new Setter(ContentPresenter.ForegroundProperty, OnAccentBrush),
                 },
             });
         }
@@ -409,7 +457,7 @@ internal static partial class EditorChrome
                 {
                     new Setter(ContentPresenter.BackgroundProperty, isHover ? AccentHoverBrush : AccentBrush),
                     new Setter(ContentPresenter.BorderBrushProperty, isHover ? AccentHoverBrush : AccentBrush),
-                    new Setter(ContentPresenter.ForegroundProperty, Brushes.White),
+                    new Setter(ContentPresenter.ForegroundProperty, OnAccentBrush),
                 },
             });
         }
@@ -858,9 +906,14 @@ internal static partial class EditorChrome
     /// </summary>
     internal static Border MakeListFrame(Control list, bool clearListBackground = false)
     {
-        if (clearListBackground && list is TemplatedControl templated)
+        if (list is TemplatedControl templated)
         {
-            templated.Background = Brushes.Transparent;
+            // The frame draws the border - not the list's own field border too
+            templated.BorderThickness = new Thickness(0);
+            if (clearListBackground)
+            {
+                templated.Background = Brushes.Transparent;
+            }
         }
 
         return new Border

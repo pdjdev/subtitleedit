@@ -25,6 +25,7 @@ public class LanguageSettings
     public string ContinuationStyleLeadingTrailingDashDots { get; set; }
 
     public string CpsLineLengthStyle { get; set; }
+    public string CpsLineLengthIgnoreTagsRegex { get; set; }
     public string CpsLineLengthStyleCalcAll { get; set; }
     public string CpsLineLengthStyleCalcNoSpaceCpsOnly { get; set; }
     public string CpsLineLengthStyleCalcNoSpace { get; set; }
@@ -283,6 +284,10 @@ public class LanguageSettings
     public string SubtitleDoubleClickAction { get; set; }
     public string SubtitleGridCenterSelectedRow { get; set; }
     public string SaveAsBehavior { get; set; }
+    public string FileChangedOutsideAction { get; set; }
+    public string FileChangedOutsideReloadWhenUnmodified { get; set; }
+    public string FileChangedOutsideAlwaysAsk { get; set; }
+    public string FileChangedOutsideNever { get; set; }
     public string DefaultSaveLocation { get; set; }
     public string DefaultSaveLocationSourceFileFolder { get; set; }
     public string DefaultSaveLocationLastUsedFolder { get; set; }
@@ -343,6 +348,7 @@ public class LanguageSettings
     public string TextBoxButtonShowColor { get; set; }
     public string TextBoxButtonShowRemoveFormatting { get; set; }
     public string TextBoxButtonShowAiAssistant { get; set; }
+    public string TextBoxButtonShowRecordSpeech { get; set; }
     public string WaveformSingleClickAction { get; set; }
     public string WaveformDoubleClickAction { get; set; }
     public string AllSettings { get; set; }
@@ -399,6 +405,7 @@ public class LanguageSettings
         ContinuationStyleLeadingTrailingDashDots = "Dash, but dots for pauses";
 
         CpsLineLengthStyle = "Cps/line-length";
+        CpsLineLengthIgnoreTagsRegex = "Ignore custom tags (regex)";
         CpsLineLengthStyleCalcAll = "Count all characters";
         CpsLineLengthStyleCalcNoSpaceCpsOnly = "Count all except space, cps only";
         CpsLineLengthStyleCalcNoSpace = "Count all except space";
@@ -656,6 +663,10 @@ public class LanguageSettings
         SubtitleDoubleClickAction = "Subtitle grid double-click action";
         SubtitleGridCenterSelectedRow = "Subtitle grid, center when selecting prev/next row";
         SaveAsBehavior = "\"Save as\" behavior";
+        FileChangedOutsideAction = "Subtitle file changed by another program";
+        FileChangedOutsideReloadWhenUnmodified = "Reload if nothing is unsaved, otherwise ask";
+        FileChangedOutsideAlwaysAsk = "Always ask";
+        FileChangedOutsideNever = "Do nothing";
         DefaultSaveLocation = "Default save location";
         DefaultSaveLocationSourceFileFolder = "Folder of subtitle/video file";
         DefaultSaveLocationLastUsedFolder = "Last used folder";
@@ -716,6 +727,7 @@ public class LanguageSettings
         TextBoxButtonShowColor = "Text box: show color button";
         TextBoxButtonShowRemoveFormatting = "Text box: show remove formatting button";
         TextBoxButtonShowAiAssistant = "Text box: show AI assistant button";
+        TextBoxButtonShowRecordSpeech = "Text box: show record speech button (microphone to text)";
         WaveformSingleClickAction = "Waveform single-click action";
         WaveformDoubleClickAction = "Waveform double-click action (after single-click action)";
         AllSettings = "All settings";

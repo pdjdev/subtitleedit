@@ -234,7 +234,7 @@ public class BatchConverter : IBatchConverter, IFixCallbacks
             vobSubParser.VobSubPacks.Clear();
             imageSubtitle = new OcrSubtitleVobSub(vobSubMergedPackList, palette)
             {
-                IsolateColors = Se.Settings.Tools.BatchConvert.VobSubIsolateColors,
+                IsolateColors = IsolateVobSubColors(),
             };
             //TODO: multi track
         }
@@ -260,7 +260,7 @@ public class BatchConverter : IBatchConverter, IFixCallbacks
                                 var vobSubs = LoadVobSubFromMatroska(track, matroska, out var idx);
                                 imageSubtitle = new OcrSubtitleVobSub(vobSubs, idx?.Palette)
                                 {
-                                    IsolateColors = Se.Settings.Tools.BatchConvert.VobSubIsolateColors,
+                                    IsolateColors = IsolateVobSubColors(),
                                 };
                                 var fileName = Path.GetFileName(item.FileName);
                                 item.OutputFileName = fileName.Substring(0, fileName.LastIndexOf('.')).TrimEnd('.') + ".mkv";
@@ -1000,6 +1000,19 @@ public class BatchConverter : IBatchConverter, IFixCallbacks
         }
     }
 
+    /// <summary>
+    /// VobSub colour isolation hands the OCR engine an opaque black-on-white bitmap. nOCR and
+    /// BinaryOCR split letters on the transparency of the original, so for them the whole
+    /// subpicture became one blob read as "*" - isolate only for the other engines.
+    /// </summary>
+    private static bool IsolateVobSubColors()
+    {
+        var engine = Se.Settings.Tools.BatchConvert.OcrEngine;
+        return Se.Settings.Tools.BatchConvert.VobSubIsolateColors &&
+               !engine.Equals("nOcr", StringComparison.OrdinalIgnoreCase) &&
+               !engine.Equals("BinaryOcr", StringComparison.OrdinalIgnoreCase);
+    }
+
     private void RunNOcr(IOcrSubtitle imageSubtitles, BatchConvertItem item, CancellationToken cancellationToken)
     {
         _lineHeightTracker = new OcrLineHeightTracker { FallbackMinLineHeight = item.Format == FormatBluRaySup ? 25 : 12 };
@@ -1173,43 +1186,12 @@ public class BatchConverter : IBatchConverter, IFixCallbacks
             index++;
         }
 
-        matches = RemoveSpacesAfter1(matches, pixelsAreSpace);
+        matches = NOcrSpaceDetector.RemoveFalseSpacesInNumbers(matches, pixelsAreSpace);
 
         var text = ItalicTextMerger.MergeWithItalicTags(matches).Trim();
         return new Paragraph(text, imageSubtitles.GetStartTime(i).TotalMilliseconds, imageSubtitles.GetEndTime(i).TotalMilliseconds);
     }
 
-    private static List<NOcrChar> RemoveSpacesAfter1(List<NOcrChar> matches, int pixelsAreSpace)
-    {
-        var deleteItems = new List<NOcrChar>();
-        for (var i = 0; i < matches.Count - 1; i++)
-        {
-            var match = matches[i];
-            if (match.Text.EndsWith('1') && !match.Italic)
-            {
-                var pixelsLess = 0;
-                if (pixelsAreSpace > 7)
-                {
-                    pixelsLess = (int)Math.Round(pixelsAreSpace * 0.3m, MidpointRounding.AwayFromZero);
-                }
-
-                var nextMatch = matches[i + 1];
-                if (nextMatch.ImageSplitterItem != null &&
-                    nextMatch.ImageSplitterItem.SpecialCharacter == " " &&
-                    nextMatch.ImageSplitterItem.SpacePixels - pixelsLess < pixelsAreSpace)
-                {
-                    deleteItems.Add(nextMatch);
-                }
-            }
-        }
-
-        foreach (var deleteItem in deleteItems)
-        {
-            matches.Remove(deleteItem);
-        }
-
-        return matches;
-    }
 
     private const int OcrPreflightSampleSize = 50;
 
@@ -3971,6 +3953,17 @@ public class BatchConverter : IBatchConverter, IFixCallbacks
             return subtitle;
         }
 
+        // "Reverse RTL start/end" moves the punctuation of every line from the end to the start, and
+        // "Fix via Unicode" wraps every line in RTL control characters. Both are right for Hebrew or
+        // Arabic text in players without bidi support and wrong for anything else - a user who left
+        // the box ticked got ".Hello world" in 26 English files. A subtitle with no right-to-left
+        // letters at all has nothing for them to fix, so leave it alone. Removing control characters
+        // is harmless either way and still runs.
+        if (!_config.RightToLeft.RemoveUnicode && !ContainsRightToLeftLetter(subtitle))
+        {
+            return subtitle;
+        }
+
         if (_config.RightToLeft.FixViaUnicode)
         {
             foreach (var p in subtitle.Paragraphs)
@@ -3994,6 +3987,20 @@ public class BatchConverter : IBatchConverter, IFixCallbacks
         }
 
         return subtitle;
+    }
+
+    private static bool ContainsRightToLeftLetter(Subtitle subtitle)
+    {
+        // Every line, not just the first few: an RTL subtitle may well open with Latin credits.
+        foreach (var p in subtitle.Paragraphs)
+        {
+            if (LanguageAutoDetect.ContainsRightToLeftLetter(p.Text))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private Subtitle MergeLinesWithSameTimeCodes(Subtitle subtitle, string language)

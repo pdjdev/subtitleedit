@@ -489,6 +489,7 @@ public class LanguageGeneral
     public string Reason { get; set; }
     public string RecentFiles { get; set; }
     public string RecentlyUsedVideoOffsets { get; set; }
+    public string Recent { get; set; }
     public string Redo { get; set; }
     public string Redownload { get; set; }
     public string Release { get; set; }
@@ -659,6 +660,9 @@ public class LanguageGeneral
     public string Styles { get; set; }
     public string SubtitleFile { get; set; }
     public string SubtitleFileChangedOutsideX { get; set; }
+    public string SubtitleFileChangedOutsideReloadX { get; set; }
+    public string SubtitleFileChangedOutsideOverwriteX { get; set; }
+    public string SubtitleFileChangedOutsideAutoSaveSkippedX { get; set; }
     public string SubtitleFileName { get; set; }
     public string SubtitleFileSaved { get; set; }
     public string SubtitleFileSavedToX { get; set; }
@@ -1176,7 +1180,7 @@ public class LanguageGeneral
         FrameRate = "Frame rate";
         Frames = "Frames";
         From = "From";
-        FromCurrentVideoPosition = "from current video position";
+        FromCurrentVideoPosition = "From current video position";
         FullScreen = "Full screen";
         Gap = "Gap";
         General = "General";
@@ -1227,7 +1231,7 @@ public class LanguageGeneral
         KeepExistingTimeCodes = "Keep existing time codes (do not add video offset)";
         KeyFile = "Key file";
         Language = "Language";
-        LanguagePostFix = "Language post-fix (mkv/mp4/auto-translate)";
+        LanguagePostFix = "Language suffix (mkv/mp4/auto-translate)";
         Layer = "Layer";
         LayerFilterOn = "Layer filter on";
         Left = "Left";
@@ -1391,6 +1395,7 @@ public class LanguageGeneral
         Reason = "Reason";
         RecentFiles = "Recent files";
         RecentlyUsedVideoOffsets = "Recently used video offsets";
+        Recent = "Recent";
         Redo = "Redo";
         Redownload = "Re-download...";
         Release = "Release";
@@ -1553,6 +1558,9 @@ public class LanguageGeneral
         Styles = "Styles";
         SubtitleFile = "Subtitle file";
         SubtitleFileChangedOutsideX = "The file \"{0}\" was changed outside Subtitle Edit." + Environment.NewLine + Environment.NewLine + "Reload it and lose your changes?";
+        SubtitleFileChangedOutsideReloadX = "The file \"{0}\" was changed outside Subtitle Edit." + Environment.NewLine + Environment.NewLine + "Reload it?";
+        SubtitleFileChangedOutsideOverwriteX = "The file \"{0}\" was changed outside Subtitle Edit after it was loaded." + Environment.NewLine + Environment.NewLine + "Overwrite it with the subtitle in Subtitle Edit?";
+        SubtitleFileChangedOutsideAutoSaveSkippedX = "Auto-save skipped: {0} was changed outside Subtitle Edit";
         SubtitleFileName = "Subtitle file name";
         SubtitleFileSaved = "Subtitle file saved";
         SubtitleFileSavedToX = "Subtitle file saved to {0}";

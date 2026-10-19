@@ -23,6 +23,7 @@ using Nikse.SubtitleEdit.Features.Files.ExportImageBased;
 using Nikse.SubtitleEdit.Features.Files.ExportPac;
 using Nikse.SubtitleEdit.Features.Files.ExportDialogueList;
 using Nikse.SubtitleEdit.Features.Video.SyncAudioTrack;
+using Nikse.SubtitleEdit.Features.Video.SyncToAudio;
 using Nikse.SubtitleEdit.Features.Files.ExportPlainText;
 using Nikse.SubtitleEdit.Features.Files.FormatProperties.DCinemaInteropProperties;
 using Nikse.SubtitleEdit.Features.Files.FormatProperties.DCinemaSmpteProperties;
@@ -424,6 +425,7 @@ public static class DependencyInjectionExtensions
         collection.AddTransient<ChangeFrameRateViewModel>();
         collection.AddTransient<ChangeSpeedViewModel>();
         collection.AddTransient<CheckForUpdatesViewModel>();
+        collection.AddTransient<CheckForUpdatesSettingsViewModel>();
         collection.AddTransient<ColorPickerViewModel>();
         collection.AddTransient<ColumnPasteViewModel>();
         collection.AddTransient<CompareViewModel>();
@@ -454,6 +456,7 @@ public static class DependencyInjectionExtensions
         collection.AddTransient<EditCustomTextFormatViewModel>();
         collection.AddTransient<EditEmbeddedTrackViewModel>();
         collection.AddTransient<EditRuleViewModel>();
+        collection.AddTransient<AddRulesViewModel>();
         collection.AddTransient<EditWholeTextViewModel>();
         collection.AddTransient<UseAlwaysListViewModel>();
         collection.AddTransient<ElevenLabsSettingsViewModel>();
@@ -473,6 +476,7 @@ public static class DependencyInjectionExtensions
         collection.AddTransient<ExportPlainTextViewModel>();
         collection.AddTransient<ExportDialogueListViewModel>();
         collection.AddTransient<SyncAudioTrackViewModel>();
+        collection.AddTransient<SyncToAudioViewModel>();
         collection.AddTransient<FindDoubleLinesViewModel>();
         collection.AddTransient<FindDoubleWordsViewModel>();
         collection.AddTransient<FindRuleViewModel>();

@@ -103,6 +103,7 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private ContinuationStyleDisplay _continuationStyle;
     [ObservableProperty] private ObservableCollection<CpsLineLengthStrategyDisplay> _cpsLineLengthStrategies;
     [ObservableProperty] private CpsLineLengthStrategyDisplay _cpsLineLengthStrategy;
+    [ObservableProperty] private string _cpsLineLengthIgnoreTagsRegex = string.Empty;
     [ObservableProperty] private ObservableCollection<string> _fonts;
     [ObservableProperty] private string _mpvPreviewFontName;
     [ObservableProperty] private int _mpvPreviewFontSize;
@@ -212,6 +213,8 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string _defaultSaveLocationCustomFolder = string.Empty;
     [ObservableProperty] private bool _isDefaultSaveLocationCustomFolderEnabled;
     [ObservableProperty] private string _selectedSaveAsBehaviorType;
+    [ObservableProperty] private ObservableCollection<FileChangedOutsideActionDisplay> _fileChangedOutsideActions;
+    [ObservableProperty] private FileChangedOutsideActionDisplay _selectedFileChangedOutsideAction;
 
     [ObservableProperty] private ObservableCollection<string> _saveAsAppendLanguageCode;
     [ObservableProperty] private string _selectedSaveAsAppendLanguageCode;
@@ -258,6 +261,7 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _textBoxButtonShowColor;
     [ObservableProperty] private bool _textBoxButtonShowRemoveFormatting;
     [ObservableProperty] private bool _textBoxButtonShowAiAssistant;
+    [ObservableProperty] private bool _textBoxButtonShowRecordSpeech;
 
     [ObservableProperty] private bool _colorDurationTooShort;
     [ObservableProperty] private bool _colorDurationTooLong;
@@ -484,6 +488,13 @@ public partial class SettingsViewModel : ObservableObject
     /// </summary>
     public bool SettingsImported { get; private set; }
 
+    /// <summary>
+    /// True once an import or a reset has replaced the settings wholesale. The main window then
+    /// applies the layout sizes and the waveform zoom *from* the settings instead of carrying its
+    /// current on-screen state over them, which is what a plain OK does (#16213).
+    /// </summary>
+    public bool SettingsReplaced { get; private set; }
+
     public Window? Window { get; internal set; }
     public ScrollViewer ScrollView { get; internal set; }
     public List<SettingsSection> Sections { get; internal set; }
@@ -698,6 +709,8 @@ public partial class SettingsViewModel : ObservableObject
             Se.Language.General.Name,
         ];
         SelectedSaveAsBehaviorType = SaveAsBehaviorTypes[0];
+        FileChangedOutsideActions = new ObservableCollection<FileChangedOutsideActionDisplay>(FileChangedOutsideActionDisplay.List());
+        SelectedFileChangedOutsideAction = FileChangedOutsideActions[0];
 
         DefaultSaveLocationTypes =
         [
@@ -832,6 +845,7 @@ public partial class SettingsViewModel : ObservableObject
         ContinuationStyle = ContinuationStyles.FirstOrDefault(p => p.Code == general.ContinuationStyle) ?? ContinuationStyles.First();
         IsEditCustomContinuationStyleVisible = ContinuationStyle?.Code == nameof(Core.Enums.ContinuationStyle.Custom);
         CpsLineLengthStrategy = CpsLineLengthStrategies.FirstOrDefault(p => p.Code == general.CpsLineLengthStrategy) ?? CpsLineLengthStrategies.First();
+        CpsLineLengthIgnoreTagsRegex = general.CpsLineLengthIgnoreTagsRegex ?? string.Empty;
 
         // The persisted choice, not the effective value - EBU STL may have frame mode forced on
         // temporarily, and that must not stick just because the settings dialog was OK'ed.
@@ -866,6 +880,7 @@ public partial class SettingsViewModel : ObservableObject
         SelectedSubtitleDoubleClickActionType = MapFromSelectedSubtitleDoubleClickAction(Se.Settings.General.SubtitleDoubleClickAction);
         SubtitleGridCenterSelectedRow = Se.Settings.General.SubtitleGridCenterSelectedRow;
         SelectedSaveAsBehaviorType = MapFromSelectedSaveAsBehavior(Se.Settings.General.SaveAsBehavior);
+        SelectedFileChangedOutsideAction = FileChangedOutsideActions.FirstOrDefault(p => p.Action.ToString() == general.FileChangedOutsideAction) ?? FileChangedOutsideActions[0];
         SelectedSaveAsAppendLanguageCode = MapFromSelectedSaveAsAppendLanguageCode(Se.Settings.General.SaveAsAppendLanguageCode);
         SelectedDefaultSaveLocationType = MapFromDefaultSaveLocation(Se.Settings.General.DefaultSaveLocation);
         DefaultSaveLocationCustomFolder = Se.Settings.General.DefaultSaveLocationCustomFolder ?? string.Empty;
@@ -983,6 +998,7 @@ public partial class SettingsViewModel : ObservableObject
         TextBoxButtonShowColor = appearance.TextBoxShowButtonColor;
         TextBoxButtonShowRemoveFormatting = appearance.TextBoxShowButtonRemoveFormatting;
         TextBoxButtonShowAiAssistant = appearance.TextBoxShowButtonAiAssistant;
+        TextBoxButtonShowRecordSpeech = appearance.TextBoxShowButtonRecordSpeech;
         ShowButtonHints = appearance.ShowHints;
         GridCompactMode = appearance.GridCompactMode;
         GridAlternatingRows = appearance.GridAlternatingRows;
@@ -1179,9 +1195,7 @@ public partial class SettingsViewModel : ObservableObject
         ProxyUseDefaultCredentials = Se.Settings.General.ProxyUseDefaultCredentials;
         ProxyBypassList = Se.Settings.General.ProxyBypassList ?? string.Empty;
         CheckForUpdatesOnStartup = Se.Settings.General.CheckForUpdatesOnStartup;
-        SelectedUpdateChannel = UpdateCheckService.IncludePrereleases()
-            ? Se.Language.Options.Settings.CheckForUpdatesChannelStableAndBeta
-            : Se.Language.Options.Settings.CheckForUpdatesChannelStable;
+        SelectedUpdateChannel = UpdateCheckService.ChannelDisplayName();
         _loadedUpdateChannel = SelectedUpdateChannel;
         SetFfmpegStatus();
         SetLibMpvStatus();
@@ -1754,6 +1768,7 @@ public partial class SettingsViewModel : ObservableObject
         general.DialogStyle = DialogStyle.Code;
         general.ContinuationStyle = ContinuationStyle.Code;
         general.CpsLineLengthStrategy = CpsLineLengthStrategy.Code;
+        general.CpsLineLengthIgnoreTagsRegex = CpsLineLengthIgnoreTagsRegex?.Trim() ?? string.Empty;
 
         general.UseFrameMode = UseFrameMode;
         general.UseFrameNumbersPersisted = SelectedTimeCodeMode.Mode == TimeCodeMode.FrameNumbers;
@@ -1792,6 +1807,7 @@ public partial class SettingsViewModel : ObservableObject
         general.SubtitleDoubleClickAction = MapToSelectedSubtitleDoubleClickAction(SelectedSubtitleDoubleClickActionType);
         general.SubtitleGridCenterSelectedRow = SubtitleGridCenterSelectedRow;
         general.SaveAsBehavior = MapToSaveAsBehavior(SelectedSaveAsBehaviorType);
+        general.FileChangedOutsideAction = SelectedFileChangedOutsideAction.Action.ToString();
         general.SaveAsAppendLanguageCode = MapToSaveAsAppendLanguageCode(SelectedSaveAsAppendLanguageCode);
         general.DefaultSaveLocation = MapToDefaultSaveLocation(SelectedDefaultSaveLocationType);
         general.DefaultSaveLocationCustomFolder = DefaultSaveLocationCustomFolder;
@@ -1886,6 +1902,7 @@ public partial class SettingsViewModel : ObservableObject
         appearance.TextBoxShowButtonColor = TextBoxButtonShowColor;
         appearance.TextBoxShowButtonRemoveFormatting = TextBoxButtonShowRemoveFormatting;
         appearance.TextBoxShowButtonAiAssistant = TextBoxButtonShowAiAssistant;
+        appearance.TextBoxShowButtonRecordSpeech = TextBoxButtonShowRecordSpeech;
         appearance.ShowHints = ShowButtonHints;
         appearance.DarkModeBackgroundColor = DarkModeBackgroundColor.FromColorToHex();
         appearance.DarkModeForegroundColor = DarkModeForegroundColor.FromColorToHex();
@@ -2055,9 +2072,7 @@ public partial class SettingsViewModel : ObservableObject
         {
             // Only an actual change is stored, so an untouched dropdown keeps the
             // "auto" default (beta users follow betas, stable users stable only).
-            general.CheckForUpdatesChannel = SelectedUpdateChannel == Se.Language.Options.Settings.CheckForUpdatesChannelStableAndBeta
-                ? UpdateCheckService.ChannelBeta
-                : UpdateCheckService.ChannelStable;
+            general.CheckForUpdatesChannel = UpdateCheckService.ChannelFromDisplayName(SelectedUpdateChannel);
         }
 
         general.CurrentProfile = SelectedProfile;
@@ -3093,6 +3108,7 @@ public partial class SettingsViewModel : ObservableObject
 
         Se.SaveSettings();
         OkPressed = true;
+        SettingsReplaced = true;
         Window?.Close();
     }
 
@@ -3322,6 +3338,7 @@ public partial class SettingsViewModel : ObservableObject
             // Reload the settings from disk since they were updated
             LoadSettings();
             SettingsImported = true;
+            SettingsReplaced = true;
         }
     }
 

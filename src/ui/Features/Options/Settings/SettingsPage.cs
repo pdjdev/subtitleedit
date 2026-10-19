@@ -1,4 +1,4 @@
-using Avalonia;
+﻿using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
@@ -466,6 +466,7 @@ public class SettingsPage : UserControl
                 }
             }),
             new SettingsItem(Se.Language.Options.Settings.CpsLineLengthStyle, () => MakeComboBoxCpsLineLengthStyle()),
+            new SettingsItem(Se.Language.Options.Settings.CpsLineLengthIgnoreTagsRegex, () => UiUtil.MakeEditableComboBox(250, IgnoreTagsRegexPresets, _vm, nameof(_vm.CpsLineLengthIgnoreTagsRegex))),
         ]));
 
         sections.Add(new SettingsSection(Se.Language.General.General, IconNames.Cogs, "#8494a4",
@@ -489,6 +490,18 @@ public class SettingsPage : UserControl
                 new Binding(nameof(_vm.ShowRecentFiles)) { Source = _vm }),
             MakeCheckboxSetting(Se.Language.Options.Settings.AutoConvertToUtf8, nameof(_vm.AutoConvertToUtf8)),
             MakeCheckboxSetting(Se.Language.Options.Settings.ForceCrLfOnSave, nameof(_vm.ForceCrLfOnSave)),
+            new SettingsItem(Se.Language.Options.Settings.FileChangedOutsideAction, () => new ComboBox
+            {
+                MinWidth = 250,
+                DataContext = _vm,
+                [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(_vm.FileChangedOutsideActions)),
+                [!SelectingItemsControl.SelectedItemProperty] = new Binding(nameof(_vm.SelectedFileChangedOutsideAction))
+                {
+                    Mode = BindingMode.TwoWay,
+                },
+                ItemTemplate = new FuncDataTemplate<FileChangedOutsideActionDisplay>((f, _) =>
+                    new TextBlock { Text = f?.Name }, true),
+            }),
             MakeCheckboxSetting(Se.Language.Options.Settings.ShowFormatLimitWarning, nameof(_vm.ShowFormatLimitWarning)),
             MakeCheckboxSetting(Se.Language.Options.Settings.AutoTrimWhiteSpace, nameof(_vm.AutoTrimWhiteSpace)),
             MakeCheckboxSetting(Se.Language.Options.Settings.RemoveBlankLinesWhenOpening, nameof(_vm.RemoveBlankLinesWhenOpening)),
@@ -1059,6 +1072,7 @@ public class SettingsPage : UserControl
             MakeCheckboxSetting(Se.Language.Options.Settings.TextBoxButtonShowColor, nameof(_vm.TextBoxButtonShowColor)),
             MakeCheckboxSetting(Se.Language.Options.Settings.TextBoxButtonShowRemoveFormatting, nameof(_vm.TextBoxButtonShowRemoveFormatting)),
             MakeCheckboxSetting(Se.Language.Options.Settings.TextBoxButtonShowAiAssistant, nameof(_vm.TextBoxButtonShowAiAssistant)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.TextBoxButtonShowRecordSpeech, nameof(_vm.TextBoxButtonShowRecordSpeech)),
 
             MakeCheckboxSetting(Se.Language.Options.Settings.ShowUpDownStartTime, nameof(_vm.ShowUpDownStartTime)),
             MakeCheckboxSetting(Se.Language.Options.Settings.ShowUpDownEndTime, nameof(_vm.ShowUpDownEndTime)),
@@ -1439,6 +1453,18 @@ public class SettingsPage : UserControl
 
         return cb;
     }
+
+    /// <summary>
+    /// Starting points for the "ignore custom tags" pattern (#16163): a client platform's own
+    /// markup like &lt;=title&gt;, &lt;@&gt; or &lt;?note&gt;, and every angle-bracket tag SE
+    /// does not strip itself. The field stays free text, so any other pattern can be typed.
+    /// </summary>
+    private static readonly string[] IgnoreTagsRegexPresets =
+    [
+        string.Empty,
+        "<[=?@][^<>]*>",
+        @"<[^\s<>][^<>]*>",
+    ];
 
     private ComboBox MakeComboBoxCpsLineLengthStyle()
     {

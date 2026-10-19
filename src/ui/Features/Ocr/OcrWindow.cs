@@ -1295,7 +1295,7 @@ public class OcrWindow : Window
         progressBar.Bind(ProgressBar.ValueProperty, new Binding(nameof(vm.ProgressValue)));
 
         var statusText = EditorChrome.MakeBoundHint(nameof(vm.ProgressText), 12);
-        statusText.MaxWidth = 520;
+        statusText.HorizontalAlignment = HorizontalAlignment.Left;
 
         // Stable UI Automation ids for external automation (#15769)
         AutomationProperties.SetAutomationId(progressBar, "OcrProgressBar");
@@ -1303,16 +1303,16 @@ public class OcrWindow : Window
 
         var grid = new Grid
         {
-            ColumnSpacing = 12,
-            ColumnDefinitions =
+            RowSpacing = 4,
+            RowDefinitions =
             {
-                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }, // progress bar
-                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) }, // status text
+                new RowDefinition { Height = GridLength.Auto }, // progress bar
+                new RowDefinition { Height = GridLength.Auto }, // status text
             },
             HorizontalAlignment = HorizontalAlignment.Stretch,
         };
         grid.Add(progressBar, 0, 0);
-        grid.Add(statusText, 0, 1);
+        grid.Add(statusText, 1, 0);
 
         var strip = EditorChrome.MakeProgressStrip(grid);
         strip.Bind(Border.IsVisibleProperty, new Binding(nameof(vm.IsOcrRunning)) { Source = vm });
@@ -1470,11 +1470,17 @@ public class OcrWindow : Window
     // Model combo item template: a dot (green = downloaded, grey = not downloaded yet) plus the
     // model's download size - same treatment as the speech-to-text model combo.
     // 0 = auto: word spaces relative to the text size (NOcrSpaceDetector).
+    // Text is bound (not set once) - the template recycles, so the closed combo's presenter
+    // keeps its TextBlock and only gets a new DataContext when the selection changes (#16187).
     private static ComboBox WithPixelsAreSpaceItemTemplate(ComboBox comboBox)
     {
-        comboBox.ItemTemplate = new FuncDataTemplate<int>((value, _) => new TextBlock
+        comboBox.ItemTemplate = new FuncDataTemplate<int>((_, _) => new TextBlock
         {
-            Text = value <= 0 ? Se.Language.General.Auto : value.ToString(System.Globalization.CultureInfo.CurrentCulture),
+            [!TextBlock.TextProperty] = new Binding(".")
+            {
+                Converter = new FuncValueConverter<int, string>(value =>
+                    value <= 0 ? Se.Language.General.Auto : value.ToString(CultureInfo.CurrentCulture)),
+            },
         }, true);
         return comboBox;
     }

@@ -78,7 +78,7 @@ public class BatchConvertWindow : Window
         progressBar.Bind(ProgressBar.ValueProperty, new Binding(nameof(vm.ProgressValue)));
         var progressStrip = EditorChrome.MakeProgressStrip(progressBar, nameof(vm.ProgressText), nameof(vm.IsConverting));
 
-        // The file list and the functions share the height (the functions up to what they need),
+        // The file list and the functions share the height, resizable with the splitter between them,
         // so both stay usable and the progress and the buttons reachable at the minimum height.
         var root = new Grid
         {
@@ -86,16 +86,28 @@ public class BatchConvertWindow : Window
             {
                 new RowDefinition(GridLength.Auto), // file toolbar + filter
                 new RowDefinition(new GridLength(1, GridUnitType.Star)) { MinHeight = 180 }, // file list, target format, output
-                new RowDefinition(new GridLength(1, GridUnitType.Star)) { MinHeight = 220, MaxHeight = 330 }, // functions + the selected function's settings
+                new RowDefinition(GridLength.Auto), // splitter
+                new RowDefinition(new GridLength(1, GridUnitType.Star)) { MinHeight = 220 }, // functions + the selected function's settings
                 new RowDefinition(GridLength.Auto), // progress, while converting
                 new RowDefinition(GridLength.Auto), // status + buttons
             },
         };
+
+        // The splitter doubles as the line between the file list and the functions.
+        var splitter = new GridSplitter
+        {
+            Height = 5,
+            Background = EditorChrome.LineBrush,
+            ResizeDirection = GridResizeDirection.Rows,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+
         root.Add(MakeToolbar(vm), 0, 0);
         root.Add(MakeFileView(vm), 1, 0);
-        root.Add(MakeFunctionsPanel(vm), 2, 0);
-        root.Add(progressStrip, 3, 0);
-        root.Add(buttonBar, 4, 0);
+        root.Add(splitter, 2, 0);
+        root.Add(MakeFunctionsPanel(vm), 3, 0);
+        root.Add(progressStrip, 4, 0);
+        root.Add(buttonBar, 5, 0);
 
         Content = root;
 
@@ -110,7 +122,7 @@ public class BatchConvertWindow : Window
     /// <paramref name="content"/>, which gets the rest - unlike <see cref="EditorChrome.MakeEditorSection"/>,
     /// which stacks, so a list in it would get unlimited height.
     /// </summary>
-    private static Grid MakeFillSection(string title, Control content, Control? headerRight = null)
+    private static Grid MakeFillSection(string title, Control content, Control? headerRight = null, Control? headerFill = null)
     {
         var header = new DockPanel();
         if (headerRight != null)
@@ -119,7 +131,14 @@ public class BatchConvertWindow : Window
             header.Children.Add(headerRight);
         }
 
-        header.Children.Add(EditorChrome.MakeSectionHeader(title));
+        var sectionHeader = EditorChrome.MakeSectionHeader(title);
+        header.Children.Add(sectionHeader);
+        if (headerFill != null)
+        {
+            // Between the title and the right-hand content, taking the width left over.
+            DockPanel.SetDock(sectionHeader, Dock.Left);
+            header.Children.Add(headerFill);
+        }
 
         var grid = new Grid
         {
@@ -526,7 +545,7 @@ public class BatchConvertWindow : Window
     }
 
     /// <summary>
-    /// The function checklist (with the presets above it) and the selected function's settings
+    /// The function checklist (with the presets below it) and the selected function's settings
     /// beside it, on the panel color.
     /// </summary>
     private static Border MakeFunctionsPanel(BatchConvertViewModel vm)
@@ -556,16 +575,23 @@ public class BatchConvertWindow : Window
         var functions = new Grid
         {
             RowSpacing = 8,
-            RowDefinitions = { new RowDefinition(GridLength.Auto), new RowDefinition(new GridLength(1, GridUnitType.Star)) },
+            RowDefinitions = { new RowDefinition(new GridLength(1, GridUnitType.Star)), new RowDefinition(GridLength.Auto) },
         };
-        functions.Add(panelPresets, 0, 0);
-        functions.Add(MakeFunctionsList(vm), 1, 0);
+        functions.Add(MakeFunctionsList(vm), 0, 0);
+        functions.Add(panelPresets, 1, 0);
 
-        // "N actions selected" beside the header
+        // "N actions selected" beside the header, and the function search between the two,
+        // so searching costs no height of its own.
         var actionsSelected = EditorChrome.MakeBoundHint(nameof(vm.ActionsSelected));
+        actionsSelected.VerticalAlignment = VerticalAlignment.Center;
+        actionsSelected.Margin = new Thickness(8, 0, 0, 0);
+        var textBoxSearch = EditorChrome.MakeSearchBox(vm, nameof(vm.FunctionSearchText), Se.Language.General.Search, double.NaN);
+        textBoxSearch.HorizontalAlignment = HorizontalAlignment.Stretch;
+        textBoxSearch.Margin = new Thickness(12, -4, 0, -4); // overlaps the header's line height a little rather than growing it
+        textBoxSearch.MaxWidth = 220;
         var left = new Border
         {
-            Child = MakeFillSection(Se.Language.General.Options, functions, actionsSelected),
+            Child = MakeFillSection(Se.Language.General.Options, functions, actionsSelected, textBoxSearch),
             BorderBrush = EditorChrome.LineBrush,
             BorderThickness = new Thickness(0, 0, 1, 0),
             Padding = new Thickness(14, 12, 14, 14),
@@ -592,8 +618,6 @@ public class BatchConvertWindow : Window
         {
             Child = columns,
             Background = EditorChrome.PanelBrush,
-            BorderBrush = EditorChrome.LineBrush,
-            BorderThickness = new Thickness(0, 1, 0, 0),
         };
     }
 
@@ -613,7 +637,7 @@ public class BatchConvertWindow : Window
         // but Russian/Bulgarian/French names are cut off (#15901).
         dataGrid.Loaded += (_, _) => dataGrid.Width = GetFunctionsListWidth(dataGrid, vm.BatchFunctions.Select(f => f.Name));
         dataGrid.DataContext = vm;
-        dataGrid.ItemsSource = vm.BatchFunctions;
+        dataGrid.ItemsSource = vm.VisibleBatchFunctions;
         dataGrid.ContextFlyout = new MenuFlyout()
         {
             Items =
@@ -707,7 +731,21 @@ public class BatchConvertWindow : Window
             [!ToggleButton.IsCheckedProperty] = new Binding(nameof(BatchConvertFunction.IsSelected)),
             [!AutomationProperties.NameProperty] = new Binding(nameof(BatchConvertFunction.Name)),
             HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(5, 0, 0, 0),
+            MinHeight = 0,
+            Padding = new Thickness(0),
+        };
+
+        // The Fluent template gives the box a fixed 32 high frame, which made every function row that
+        // tall; 24 keeps a little air between the boxes in the default compact grid.
+        checkBox.TemplateApplied += (_, e) =>
+        {
+            foreach (var frame in e.NameScope.Find<Grid>("RootGrid")?.Children.OfType<Grid>() ?? [])
+            {
+                frame.Height = 24;
+                frame.VerticalAlignment = VerticalAlignment.Center;
+            }
         };
 
         checkBox.IsCheckedChanged += (_, _) => vm.SelectedFunctionChanged();
