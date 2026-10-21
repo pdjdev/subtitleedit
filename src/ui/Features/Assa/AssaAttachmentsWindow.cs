@@ -6,8 +6,6 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
-using System.Collections;
-using Avalonia.Styling;
 using Nikse.SubtitleEdit.Logic;
 using Nikse.SubtitleEdit.Logic.Config;
 
@@ -144,14 +142,7 @@ public class AssaAttachmentsWindow : Window
         };
         grid.Add(summary, 0, 0);
         grid.Add(buttons, 0, 1);
-        return new Border
-        {
-            Child = grid,
-            Background = EditorChrome.ButtonBarBrush,
-            BorderBrush = EditorChrome.LineBrush,
-            BorderThickness = new Thickness(0, 1, 0, 0),
-            Padding = new Thickness(16, 10),
-        };
+        return EditorChrome.WrapButtonBar(grid);
     }
 
     private static Border MakeLeftView(AssaAttachmentsViewModel vm, out TableView tableView)

@@ -1,8 +1,5 @@
 using Avalonia.Controls;
-using Avalonia.Controls.Primitives;
-using Avalonia.Controls.Templates;
 using Avalonia.Data;
-using Avalonia.Layout;
 using Avalonia.Media;
 using Nikse.SubtitleEdit.Logic;
 using Nikse.SubtitleEdit.Logic.Config;
@@ -122,20 +119,7 @@ public static class SelectLinesWindowBuilder
             Header = checkBoxColumnHeader,
             CellTheme = UiUtil.TableViewNoPaddingCellTheme,
             HeaderTheme = UiUtil.TableViewColumnHeaderTheme,
-            CellTemplate = new FuncDataTemplate<TRow>((_, _) => new Border
-            {
-                Background = Brushes.Transparent,
-                Padding = new Avalonia.Thickness(4),
-                Child = new CheckBox
-                {
-                    Focusable = false,
-                    [!ToggleButton.IsCheckedProperty] = new Binding(nameof(SelectLinesRowBase.IsSelected))
-                    {
-                        Mode = BindingMode.TwoWay,
-                    },
-                    HorizontalAlignment = HorizontalAlignment.Center,
-                },
-            }),
+            CellTemplate = TableViewExtras.MakeCheckBoxCellTemplate<TRow>(nameof(SelectLinesRowBase.IsSelected)),
             Width = new GridLength(80),
         });
         dataGrid.Columns.Add(new SeTableViewColumn

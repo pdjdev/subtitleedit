@@ -1163,19 +1163,6 @@ internal static partial class EditorChrome
     }
 
     /// <summary>
-    /// A dim label above its control (for wide inputs like URLs), linked to it for screen readers.
-    /// </summary>
-    internal static StackPanel MakeLabelAbove(string label, Control content)
-    {
-        var text = MakeDimLabel(label, new Thickness(0));
-        AutomationProperties.SetLabeledBy(content, text);
-        var panel = new StackPanel { Spacing = 4 };
-        panel.Children.Add(text);
-        panel.Children.Add(content);
-        return panel;
-    }
-
-    /// <summary>
     /// A dim label that wraps.
     /// </summary>
     internal static TextBlock MakeWrappingDimLabel(string text)
@@ -1649,6 +1636,20 @@ internal static partial class EditorChrome
         panel.Children.Add(MakeDimLabel(label, new Thickness(0)));
         panel.Children.Add(field);
         foreach (var control in after)
+        {
+            panel.Children.Add(control);
+        }
+
+        return panel;
+    }
+
+    /// <summary>
+    /// Controls side by side on one line (a field and its unit, a button and its hint).
+    /// </summary>
+    internal static StackPanel MakeInlineRow(params Control[] controls)
+    {
+        var panel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center };
+        foreach (var control in controls)
         {
             panel.Children.Add(control);
         }

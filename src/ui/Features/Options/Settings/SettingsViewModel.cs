@@ -139,6 +139,7 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsMsMode))]
     [NotifyPropertyChangedFor(nameof(MinGapLabel))]
+    [NotifyPropertyChangedFor(nameof(GapRangeLabel))]
     private bool _useFrameMode;
 
     [ObservableProperty] private ObservableCollection<TimeCodeModeDisplay> _timeCodeModes;
@@ -161,6 +162,9 @@ public partial class SettingsViewModel : ObservableObject
     public string MinGapLabel => UseFrameMode
         ? Se.Language.Options.Settings.MinGapFrames
         : Se.Language.Options.Settings.MinGapMs;
+    public string GapRangeLabel => UseFrameMode
+        ? Se.Language.Options.Settings.GapRangeFrames
+        : Se.Language.Options.Settings.GapRangeMs;
     [ObservableProperty] private bool _textBoxLimitNewLines;
     [ObservableProperty] private bool _textBoxAutoWrapWhileTyping;
     [ObservableProperty] private bool _autoSave;
@@ -228,6 +232,7 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _mergeAutoBreak;
     [ObservableProperty] private ObservableCollection<string> _splitOddNumberOfLinesActions;
     [ObservableProperty] private string _selectedSplitOddNumberOfLinesAction;
+    [ObservableProperty] private bool _splitAtVideoAndTextBoxPositionAllowEmptySecond;
     [ObservableProperty] private bool _ocrUseWordSplitList;
     [ObservableProperty] private bool _spellCheckRememberUseAlwaysList;
     [ObservableProperty] private bool _fixShortDisplayTimesAllowMoveStartTime;
@@ -275,6 +280,11 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _colorWordsPerMinute;
     [ObservableProperty] private bool _colorOverlap;
     [ObservableProperty] private bool _colorGapTooShort;
+    [ObservableProperty] private bool _colorGapInRange;
+    [ObservableProperty] private int? _gapRangeMinMs;
+    [ObservableProperty] private int? _gapRangeMaxMs;
+    [ObservableProperty] private int? _gapRangeMinFrames;
+    [ObservableProperty] private int? _gapRangeMaxFrames;
     [ObservableProperty] private bool _colorCustomErrorRules;
     private List<SeCustomErrorRule> _customErrorRules = new();
     [ObservableProperty] private Color _errorColor;
@@ -551,13 +561,16 @@ public partial class SettingsViewModel : ObservableObject
         ];
         SelectedUpdateChannel = UpdateChannels[0];
 
-        Themes = [Se.Language.General.System, Se.Language.General.Light, Se.Language.General.Dark, Se.Language.General.Classic, "Pastel"];
+        Themes = [Se.Language.General.System, Se.Language.General.Light, Se.Language.General.Dark, Se.Language.General.Classic, "Pastel", "Nord", "Midnight Cinema", "Sakura"];
         SelectedTheme = Themes[0];
 
         // Themes.zip is unpacked into the data folder at start-up; if that failed (or has not run)
         // the folder is missing, which must not take the whole Settings window down with it.
         var iconFolders = Directory.Exists(Se.ThemesFolder)
-            ? Directory.GetDirectories(Se.ThemesFolder).Select(p => Path.GetFileName(p)).ToList()
+            ? Directory.GetDirectories(Se.ThemesFolder)
+                // Nord's folder holds only background art - not an icon set to pick
+                .Where(p => File.Exists(Path.Combine(p, "Open.png")))
+                .Select(p => Path.GetFileName(p)).ToList()
             : new List<string>();
         iconFolders.Insert(0, Se.Language.General.Auto);
         IconThemes = new ObservableCollection<string>(iconFolders);
@@ -944,6 +957,7 @@ public partial class SettingsViewModel : ObservableObject
         MergeKeepEndTimeOnlyAssa = Se.Settings.Tools.MergeKeepEndTimeOnlyAssa;
         MergeAutoBreak = Se.Settings.Tools.MergeAutoBreak;
         SelectedSplitOddNumberOfLinesAction = MapFromSplitOddActionToLanguageCode(Se.Settings.Tools.SplitOddLinesAction);
+        SplitAtVideoAndTextBoxPositionAllowEmptySecond = Se.Settings.Tools.SplitAtVideoAndTextBoxPositionAllowEmptySecond;
         SelectedSpellCheckEngine = MapFromSpellCheckEngine(Se.Settings.SpellCheck.SpellCheckProvider);
         OcrUseWordSplitList = Se.Settings.Ocr.UseWordSplitList;
         SpellCheckRememberUseAlwaysList = Se.Settings.Tools.SpellCheckRememberUseAlwaysList;
@@ -1143,6 +1157,11 @@ public partial class SettingsViewModel : ObservableObject
         ColorWordsPerMinute = general.ColorWordsPerMinute;
         ColorOverlap = general.ColorTimeCodeOverlap;
         ColorGapTooShort = general.ColorGapTooShort;
+        ColorGapInRange = general.ColorGapInRange;
+        GapRangeMinMs = general.GapRangeMin.Milliseconds;
+        GapRangeMaxMs = general.GapRangeMax.Milliseconds;
+        GapRangeMinFrames = general.GapRangeMin.Frames;
+        GapRangeMaxFrames = general.GapRangeMax.Frames;
         ErrorColor = general.ErrorColor.FromHexToColor();
         ColorCustomErrorRules = general.ColorCustomErrorRules;
         _customErrorRules = general.CustomErrorRules.Select(CopyCustomErrorRule).ToList();
@@ -1306,26 +1325,6 @@ public partial class SettingsViewModel : ObservableObject
         return _waveformDoubleClickActionToTextMap.TryGetValue(doubleClickAction, out var text)
             ? text
             : Se.Language.General.None;
-    }
-
-    private string GetTranslationModifierFromSetting(string modifier)
-    {
-        if (modifier == "Control" || modifier == "Ctrl")
-        {
-            return OperatingSystem.IsMacOS() ? Se.Language.Options.Shortcuts.ControlMac : Se.Language.Options.Shortcuts.Control;
-        }
-        else if (modifier == "Shift")
-        {
-            return Se.Language.Options.Shortcuts.Shift;
-        }
-        else if (modifier == "Alt")
-        {
-            return Se.Language.Options.Shortcuts.Alt;
-        }
-        else
-        {
-            return string.Empty;
-        }
     }
 
     private static string MapFromSpellCheckEngine(string engine)
@@ -1503,13 +1502,25 @@ public partial class SettingsViewModel : ObservableObject
         {
             return UiTheme.ThemeNamePastel;
         }
+        else if (translation == "Nord")
+        {
+            return UiTheme.ThemeNameNord;
+        }
+        else if (translation == "Midnight Cinema")
+        {
+            return UiTheme.ThemeNameMidnightCinema;
+        }
+        else if (translation == "Sakura")
+        {
+            return UiTheme.ThemeNameSakura;
+        }
         else
         {
             return UiTheme.ThemeNameSystem;
         }
     }
 
-    private string MapThemeToTranslation(string theme)
+    internal static string MapThemeToTranslation(string theme)
     {
         if (theme == UiTheme.ThemeNameSystem)
         {
@@ -1530,6 +1541,18 @@ public partial class SettingsViewModel : ObservableObject
         else if (theme == UiTheme.ThemeNamePastel)
         {
             return "Pastel";
+        }
+        else if (theme == UiTheme.ThemeNameNord)
+        {
+            return "Nord";
+        }
+        else if (theme == UiTheme.ThemeNameMidnightCinema)
+        {
+            return "Midnight Cinema";
+        }
+        else if (theme == UiTheme.ThemeNameSakura)
+        {
+            return "Sakura";
         }
         else
         {
@@ -1843,6 +1866,7 @@ public partial class SettingsViewModel : ObservableObject
         Se.Settings.Tools.MergeKeepEndTimeOnlyAssa = MergeKeepEndTimeOnlyAssa;
         Se.Settings.Tools.MergeAutoBreak = MergeAutoBreak;
         Se.Settings.Tools.SplitOddLinesAction = MapFromSplitOddActionTranslationToCode(SelectedSplitOddNumberOfLinesAction);
+        Se.Settings.Tools.SplitAtVideoAndTextBoxPositionAllowEmptySecond = SplitAtVideoAndTextBoxPositionAllowEmptySecond;
         Se.Settings.SpellCheck.SpellCheckProvider = MapFromUISpellCheckEngineToCode(SelectedSpellCheckEngine);
         Se.Settings.Ocr.UseWordSplitList = OcrUseWordSplitList;
         Se.Settings.Tools.SpellCheckRememberUseAlwaysList = SpellCheckRememberUseAlwaysList;
@@ -2030,6 +2054,11 @@ public partial class SettingsViewModel : ObservableObject
         general.ColorWordsPerMinute = ColorWordsPerMinute;
         general.ColorTimeCodeOverlap = ColorOverlap;
         general.ColorGapTooShort = ColorGapTooShort;
+        general.ColorGapInRange = ColorGapInRange;
+        general.GapRangeMin.Milliseconds = GapRangeMinMs ?? general.GapRangeMin.Milliseconds;
+        general.GapRangeMax.Milliseconds = GapRangeMaxMs ?? general.GapRangeMax.Milliseconds;
+        general.GapRangeMin.Frames = GapRangeMinFrames ?? general.GapRangeMin.Frames;
+        general.GapRangeMax.Frames = GapRangeMaxFrames ?? general.GapRangeMax.Frames;
         general.ErrorColor = ErrorColor.FromColorToHex();
         general.ColorCustomErrorRules = ColorCustomErrorRules;
         general.CustomErrorRules = _customErrorRules.Select(CopyCustomErrorRule).ToList();
@@ -2967,7 +2996,8 @@ public partial class SettingsViewModel : ObservableObject
                 page.RefreshSections();
             }
 
-            return SelectedSection?.Panel;
+            // Include the section border's padding when positioning the header.
+            return SelectedSection?.Panel?.Parent as Control;
         }, navigationMethod);
     }
 
@@ -3101,6 +3131,9 @@ public partial class SettingsViewModel : ObservableObject
                 Se.Settings.General.ColorWordsPerMinute = g.ColorWordsPerMinute;
                 Se.Settings.General.ColorTimeCodeOverlap = g.ColorTimeCodeOverlap;
                 Se.Settings.General.ColorGapTooShort = g.ColorGapTooShort;
+                Se.Settings.General.ColorGapInRange = g.ColorGapInRange;
+                Se.Settings.General.GapRangeMin = g.GapRangeMin;
+                Se.Settings.General.GapRangeMax = g.GapRangeMax;
                 Se.Settings.General.ErrorColor = g.ErrorColor;
                 Se.Settings.General.ColorCustomErrorRules = g.ColorCustomErrorRules; // the rules themselves are user data and stay
             }

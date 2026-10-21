@@ -8,7 +8,6 @@ using Avalonia.Layout;
 using Nikse.SubtitleEdit.Controls.VideoPlayer;
 using Nikse.SubtitleEdit.Logic;
 using Nikse.SubtitleEdit.Logic.Config;
-using Optris.Icons.Avalonia;
 
 namespace Nikse.SubtitleEdit.Features.Options.Settings.VideoControlsItems;
 
@@ -39,6 +38,7 @@ public class VideoControlsItemsWindow : Window
             StopIsVisible = true,
             FullScreenIsVisible = true,
             SubtitleButtonsIsVisible = true,
+            PlaybackSpeedIsVisible = true,
         };
         KeyboardNavigation.SetTabNavigation(preview, KeyboardNavigationMode.None);
         preview.SetPreviewCaptions("00:01:23.456 / 01:39:43.040", "movie.mkv", "libmpv");

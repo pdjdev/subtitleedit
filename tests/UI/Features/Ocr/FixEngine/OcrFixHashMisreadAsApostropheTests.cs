@@ -1,9 +1,4 @@
 using Nikse.SubtitleEdit.Core.Common;
-using Nikse.SubtitleEdit.Features.Ocr.FixEngine;
-using Nikse.SubtitleEdit.Features.SpellCheck;
-using System;
-using System.Collections.Generic;
-using System.IO;
 using Nikse.SubtitleEdit.UiLogic.Ocr.FixEngine;
 using Nikse.SubtitleEdit.UiLogic.SpellCheck;
 
@@ -60,7 +55,7 @@ public class OcrFixHashMisreadAsApostropheTests : IDisposable
 
     private static IOcrFixEngine CreateEngine()
     {
-        IOcrFixEngine engine = new OcrFixEngine(new FakeSpellChecker());
+        IOcrFixEngine engine = new OcrFixEngine(new FakeSpellChecker()) { FixImageMatcherMisreads = true };
         engine.Initialize(new Subtitle(), "eng", new SpellCheckDictionaryDisplay());
         return engine;
     }

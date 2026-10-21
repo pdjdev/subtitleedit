@@ -15,7 +15,6 @@ using Nikse.SubtitleEdit.Features.Main.Layout;
 using Nikse.SubtitleEdit.Features.Video.TextToSpeech.Engines;
 using Nikse.SubtitleEdit.Logic;
 using Nikse.SubtitleEdit.Logic.Config;
-using Nikse.SubtitleEdit.Logic.ValueConverters;
 using Optris.Icons.Avalonia;
 using System.ComponentModel;
 
@@ -447,20 +446,21 @@ public class VoiceManagerWindow : Window
     private Control MakeDetailsPane(VoiceManagerViewModel vm)
     {
         var settings = Se.Settings.Waveform;
+        var colors = WaveformColors.Current;
         var audioVisualizer = new AudioVisualizer
         {
             DrawGridLines = settings.DrawGridLines,
-            WaveformColor = settings.WaveformColor.FromHexToColor(),
-            WaveformBackgroundColor = settings.WaveformBackgroundColor.FromHexToColor(),
-            WaveformSelectedColor = settings.WaveformSelectedColor.FromHexToColor(),
-            WaveformCursorColor = settings.WaveformCursorColor.FromHexToColor(),
-            WaveformShotChangeColor = settings.WaveformShotChangeColor.FromHexToColor(),
-            WaveformGridColor = settings.WaveformGridColor.FromHexToColor(),
-            WaveformParagraphLeftColor = settings.WaveformParagraphLeftColor.FromHexToColor(),
-            WaveformParagraphRightColor = settings.WaveformParagraphRightColor.FromHexToColor(),
-            WaveformFancyHighColor = settings.WaveformFancyHighColor.FromHexToColor(),
-            ParagraphBackground = settings.ParagraphBackground.FromHexToColor(),
-            ParagraphSelectedBackground = settings.ParagraphSelectedBackground.FromHexToColor(),
+            WaveformColor = colors.Waveform,
+            WaveformBackgroundColor = colors.Background,
+            WaveformSelectedColor = colors.Selected,
+            WaveformCursorColor = colors.Cursor,
+            WaveformShotChangeColor = colors.ShotChange,
+            WaveformGridColor = colors.Grid,
+            WaveformParagraphLeftColor = colors.ParagraphLeft,
+            WaveformParagraphRightColor = colors.ParagraphRight,
+            WaveformFancyHighColor = colors.FancyHigh,
+            ParagraphBackground = colors.ParagraphBackground,
+            ParagraphSelectedBackground = colors.ParagraphSelectedBackground,
             WaveformDrawStyle = InitWaveform.GetWaveformDrawStyle(settings.WaveformDrawStyle),
             WaveformHeightPercentage = settings.SpectrogramCombinedWaveformHeight,
             InvertMouseWheel = settings.InvertMouseWheel,

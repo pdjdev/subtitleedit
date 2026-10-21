@@ -10,11 +10,9 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using System;
 using System.Collections;
-using System.Linq;
 using Nikse.SubtitleEdit.Controls;
 using Nikse.SubtitleEdit.Controls.VideoPlayer;
 using Nikse.SubtitleEdit.Features.Main.Layout;
-using Nikse.SubtitleEdit.Features.Video.VideoOcr;
 using Nikse.SubtitleEdit.Logic;
 using Nikse.SubtitleEdit.Logic.Config;
 using Nikse.SubtitleEdit.Logic.ValueConverters;
@@ -778,18 +776,7 @@ public class BinaryEditWindow : Window
             MinWidth = 80,
             CellTheme = UiUtil.TableViewNoPaddingCellTheme,
             HeaderTheme = UiUtil.TableViewColumnHeaderTheme,
-            CellTemplate = new Avalonia.Controls.Templates.FuncDataTemplate<BinarySubtitleItem>((_, _) =>
-                new Border
-                {
-                    Background = Brushes.Transparent, // Prevents highlighting
-                    Padding = new Thickness(4),
-                    Child = new CheckBox
-                    {
-                        [!ToggleButton.IsCheckedProperty] = new Binding(nameof(BinarySubtitleItem.IsForced)),
-                        HorizontalAlignment = HorizontalAlignment.Center,
-                        Focusable = false
-                    }
-                }),
+            CellTemplate = TableViewExtras.MakeCheckBoxCellTemplate<BinarySubtitleItem>(nameof(BinarySubtitleItem.IsForced)),
         });
 
         columnManager.Add(new SeTableViewColumn

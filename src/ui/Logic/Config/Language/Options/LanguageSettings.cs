@@ -1,5 +1,4 @@
 ﻿using Nikse.SubtitleEdit.Core.Enums;
-using System;
 
 namespace Nikse.SubtitleEdit.Logic.Config.Language.Options;
 
@@ -125,6 +124,9 @@ public class LanguageSettings
     public string ColorWordsPerMinute { get; set; }
     public string ColorOverlap { get; set; }
     public string ColorGapTooShort { get; set; }
+    public string ColorGapInRange { get; set; }
+    public string GapRangeMs { get; set; }
+    public string GapRangeFrames { get; set; }
     public string ErrorBackgroundColor { get; set; }
     public string CustomErrorRules { get; set; }
     public string CustomErrorRulesHighlight { get; set; }
@@ -324,6 +326,7 @@ public class LanguageSettings
     public string SplitOddLineActionWeightTop { get; set; }
     public string SplitOddLineActionWeightBottom { get; set; }
     public string SplitOddLinesAction { get; set; }
+    public string SplitAtVideoAndTextBoxPositionAllowEmptySecond { get; set; }
     public string OcrUseWordSplitList { get; set; }
     public string OcrGuessUnknownWords { get; set; }
     public string SpellCheckRememberUseAlwaysList { get; set; }
@@ -505,6 +508,9 @@ public class LanguageSettings
         ColorWordsPerMinute = "Color words/min if too high";
         ColorOverlap = "Color time code overlap";
         ColorGapTooShort = "Color if gap is too short";
+        ColorGapInRange = "Color if gap is in range";
+        GapRangeMs = "Gap range (ms)";
+        GapRangeFrames = "Gap range (frames)";
         ErrorBackgroundColor = "Error background color";
         CustomErrorRules = "Custom error rules";
         CustomErrorRulesHighlight = "Color lines matching a custom error rule";
@@ -703,6 +709,7 @@ public class LanguageSettings
         SplitOddLineActionWeightTop = "Weight top";
         SplitOddLineActionWeightBottom = "Weight bottom";
         SplitOddLinesAction = "Split odd lines action";
+        SplitAtVideoAndTextBoxPositionAllowEmptySecond = "Split at video and text box position: cursor at the end keeps all text in the first line (second line empty)";
         OcrUseWordSplitList = "OCR: use word split list";
         OcrGuessUnknownWords = "OCR: try to guess unknown words";
         SpellCheckRememberUseAlwaysList = "Spell check: remember \"Use always\" list";

@@ -68,6 +68,18 @@ namespace Nikse.SubtitleEdit.Controls.VideoPlayer
         public static readonly StyledProperty<bool> SubtitleButtonsIsVisibleProperty =
             AvaloniaProperty.Register<VideoPlayerControl, bool>(nameof(SubtitleButtonsIsVisible));
 
+        public static readonly StyledProperty<ICommand?> PlaybackSpeedCommandProperty =
+            AvaloniaProperty.Register<VideoPlayerControl, ICommand?>(nameof(PlaybackSpeedCommand));
+
+        public static readonly StyledProperty<IReadOnlyList<string>?> PlaybackSpeedsProperty =
+            AvaloniaProperty.Register<VideoPlayerControl, IReadOnlyList<string>?>(nameof(PlaybackSpeeds));
+
+        public static readonly StyledProperty<string> PlaybackSpeedTextProperty =
+            AvaloniaProperty.Register<VideoPlayerControl, string>(nameof(PlaybackSpeedText), "1.0x");
+
+        public static readonly StyledProperty<bool> PlaybackSpeedIsVisibleProperty =
+            AvaloniaProperty.Register<VideoPlayerControl, bool>(nameof(PlaybackSpeedIsVisible));
+
         public static readonly StyledProperty<bool> StopIsVisibleProperty =
             AvaloniaProperty.Register<VideoPlayerControl, bool>(nameof(StopIsVisible));
 
@@ -78,6 +90,40 @@ namespace Nikse.SubtitleEdit.Controls.VideoPlayer
         {
             get => GetValue(PlayerContentProperty);
             set => SetValue(PlayerContentProperty, value);
+        }
+
+        /// <summary>
+        /// Theme art shown in the video area while no video is loaded.
+        /// </summary>
+        public IImage? EmptyBackground
+        {
+            get => _emptyBackground.Source;
+            set
+            {
+                _emptyBackground.Source = value;
+                UpdateEmptyBackground();
+            }
+        }
+
+        private readonly Image _emptyBackground;
+
+        // From the start of Open until Close - the file name is only set once the file is loaded
+        private bool _hasVideo;
+
+        private void UpdateEmptyBackground()
+        {
+            var showArt = _emptyBackground.Source != null && !_hasVideo;
+            _emptyBackground.IsVisible = showArt;
+
+            // A native player window (mpv "wid" - the Windows default - and VLC) is drawn on top
+            // of everything Avalonia draws, so it is hidden while the art shows. Hiding only hides
+            // the native window: the window and the player in it live until the control is
+            // detached. The presenter is hidden rather than the control itself, as mpv's Linux
+            // resize workaround toggles the control's own IsVisible.
+            if (_contentPresenter != null && PlayerContent is NativeControlHost)
+            {
+                _contentPresenter.IsVisible = !showArt;
+            }
         }
 
         public double Volume
@@ -181,6 +227,44 @@ namespace Nikse.SubtitleEdit.Controls.VideoPlayer
             set => SetValue(SubtitleButtonsIsVisibleProperty, value);
         }
 
+        /// <summary>
+        /// Runs with the picked speed (e.g. "1.4x") from the playback speed button's menu (#16306).
+        /// The owner keeps the speed, and sets <see cref="PlaybackSpeedText"/> when it changes.
+        /// </summary>
+        public ICommand? PlaybackSpeedCommand
+        {
+            get => GetValue(PlaybackSpeedCommandProperty);
+            set => SetValue(PlaybackSpeedCommandProperty, value);
+        }
+
+        /// <summary>
+        /// The speeds offered in the playback speed button's menu, e.g. "0.2x" ... "3.0x".
+        /// </summary>
+        public IReadOnlyList<string>? PlaybackSpeeds
+        {
+            get => GetValue(PlaybackSpeedsProperty);
+            set => SetValue(PlaybackSpeedsProperty, value);
+        }
+
+        /// <summary>
+        /// The playback speed button needs an owner that keeps the speed (the main window's
+        /// players and the controls preview) - shown when the controls layout does too (#16306).
+        /// </summary>
+        public bool PlaybackSpeedIsVisible
+        {
+            get => GetValue(PlaybackSpeedIsVisibleProperty);
+            set => SetValue(PlaybackSpeedIsVisibleProperty, value);
+        }
+
+        /// <summary>
+        /// The current speed shown on the playback speed button - set by the owner.
+        /// </summary>
+        public string PlaybackSpeedText
+        {
+            get => GetValue(PlaybackSpeedTextProperty);
+            set => SetValue(PlaybackSpeedTextProperty, value);
+        }
+
         public bool StopIsVisible
         {
             get => GetValue(StopIsVisibleProperty);
@@ -240,6 +324,7 @@ namespace Nikse.SubtitleEdit.Controls.VideoPlayer
         private readonly Button _buttonPreviousSubtitle;
         private readonly Button _buttonNextSubtitle;
         private readonly NonSpaceToggleButton _buttonToggleSubtitles;
+        private readonly Button _buttonPlaybackSpeed;
         private readonly StackPanel _panelFullScreen;
         private readonly Slider _sliderPosition;
         private readonly StackPanel _panelVolume;
@@ -259,7 +344,7 @@ namespace Nikse.SubtitleEdit.Controls.VideoPlayer
         private int _durationProbeGeneration;
         private readonly Grid _gridProgress; // Reference to the controls grid
         private DispatcherTimer? _autoHideTimer;
-        private DateTime _lastActivityTime;
+        private bool _isPlaybackSpeedMenuOpen;
 
         // True while the user is dragging (or arrow-keying) the position slider. The position
         // timer must leave the slider alone for as long as it is set - see StartPositionTimer.
@@ -493,7 +578,6 @@ namespace Nikse.SubtitleEdit.Controls.VideoPlayer
 
             _videoPlayerInstance = videoPlayerInstance;
             _videoFileName = string.Empty;
-            _lastActivityTime = DateTime.UtcNow;
 
             var mainGrid = new Grid
             {
@@ -510,6 +594,15 @@ namespace Nikse.SubtitleEdit.Controls.VideoPlayer
             _contentPresenter = contentPresenter;
             mainGrid.Children.Add(contentPresenter);
             Grid.SetRow(contentPresenter, 0);
+
+            _emptyBackground = new Image
+            {
+                Stretch = Stretch.UniformToFill,
+                IsHitTestVisible = false,
+                IsVisible = false,
+            };
+            mainGrid.Children.Add(_emptyBackground);
+            Grid.SetRow(_emptyBackground, 0);
 
             // Row with buttons + position slider + volume slider - the columns are made by
             // ApplyControlsLayout, from the user's order and visibility (#15286)
@@ -605,6 +698,28 @@ namespace Nikse.SubtitleEdit.Controls.VideoPlayer
                 Source = this,
                 Mode = BindingMode.OneWay,
             });
+
+            // Playback speed, e.g. "1.0x" - a click opens a menu with the speeds (#16306).
+            _buttonPlaybackSpeed = new NonSpaceButton
+            {
+                VerticalAlignment = VerticalAlignment.Center,
+                [AutomationProperties.NameProperty] = Se.Language.General.PlaybackSpeed,
+            };
+            _buttonPlaybackSpeed.Bind(IsVisibleProperty, new Binding
+            {
+                Path = nameof(PlaybackSpeedIsVisible),
+                Source = this
+            });
+            _buttonPlaybackSpeed.Bind(ContentControl.ContentProperty, new Binding
+            {
+                Path = nameof(PlaybackSpeedText),
+                Source = this
+            });
+            if (Se.Settings.Appearance.ShowHints)
+            {
+                ToolTip.SetTip(_buttonPlaybackSpeed, Se.Language.General.PlaybackSpeed);
+            }
+            _buttonPlaybackSpeed.Click += (_, _) => ShowPlaybackSpeedMenu();
 
             // Fullscreen
             _buttonFullScreen = new NonSpaceButton
@@ -1041,6 +1156,8 @@ namespace Nikse.SubtitleEdit.Controls.VideoPlayer
             // meanwhile (issue #14218). Callers that seek only after the open have already
             // announced their target - a start-less open must not clear it.
             BeginPositionRestore(startPositionSeconds);
+            _hasVideo = true;
+            UpdateEmptyBackground();
 
             // Reset slider state before LoadFile. Otherwise, when the new file's
             // Duration arrives on the next timer tick, the slider's Maximum drops
@@ -1114,6 +1231,7 @@ namespace Nikse.SubtitleEdit.Controls.VideoPlayer
                     SeVideoControlsItemType.PreviousSubtitle => _buttonPreviousSubtitle,
                     SeVideoControlsItemType.NextSubtitle => _buttonNextSubtitle,
                     SeVideoControlsItemType.ToggleSubtitles => _buttonToggleSubtitles,
+                    SeVideoControlsItemType.PlaybackSpeed => _buttonPlaybackSpeed,
                     SeVideoControlsItemType.FullScreen => _panelFullScreen,
                     SeVideoControlsItemType.PositionSlider => _sliderPosition,
                     SeVideoControlsItemType.Volume => _panelVolume,
@@ -1235,12 +1353,52 @@ namespace Nikse.SubtitleEdit.Controls.VideoPlayer
             }
         }
 
+        private void ShowPlaybackSpeedMenu()
+        {
+            var speeds = PlaybackSpeeds;
+            var command = PlaybackSpeedCommand;
+            if (speeds == null || speeds.Count == 0 || command == null)
+            {
+                return;
+            }
+
+            var flyout = new MenuFlyout { Placement = PlacementMode.Top };
+            foreach (var speed in speeds)
+            {
+                var menuItem = new Avalonia.Controls.MenuItem
+                {
+                    Header = speed,
+                    ToggleType = MenuItemToggleType.Radio,
+                    IsChecked = speed == PlaybackSpeedText,
+                    Command = command,
+                    CommandParameter = speed,
+                };
+                flyout.Items.Add(menuItem);
+            }
+
+            // Keep the full-screen controls up while the menu is open.
+            flyout.Opened += (_, _) =>
+            {
+                _isPlaybackSpeedMenuOpen = true;
+                StopAutoHideControls();
+            };
+            flyout.Closed += (_, _) =>
+            {
+                _isPlaybackSpeedMenuOpen = false;
+                if (IsFullScreen)
+                {
+                    StartAutoHideControls();
+                }
+            };
+            flyout.ShowAt(_buttonPlaybackSpeed);
+        }
+
         private static double GetControlsSpacing(SeVideoControlsItemType left, SeVideoControlsItemType right)
         {
             static bool IsButton(SeVideoControlsItemType type) =>
                 type is SeVideoControlsItemType.Play or SeVideoControlsItemType.Stop or SeVideoControlsItemType.FullScreen or
                     SeVideoControlsItemType.PreviousSubtitle or SeVideoControlsItemType.NextSubtitle or
-                    SeVideoControlsItemType.ToggleSubtitles;
+                    SeVideoControlsItemType.ToggleSubtitles or SeVideoControlsItemType.PlaybackSpeed;
 
             if (IsButton(left) && IsButton(right))
             {
@@ -1314,6 +1472,8 @@ namespace Nikse.SubtitleEdit.Controls.VideoPlayer
             ProgressText = string.Empty;
             _videoFileName = string.Empty;
             _textBlockVideoFileName.Text = string.Empty;
+            _hasVideo = false;
+            UpdateEmptyBackground();
             SetPositionDisplayOnly(0);
             Duration = 0;
             StartDurationProbe(null);
@@ -1630,8 +1790,6 @@ namespace Nikse.SubtitleEdit.Controls.VideoPlayer
 
         private void StartAutoHideControls()
         {
-            _lastActivityTime = DateTime.UtcNow;
-
             // When the user opts to hide controls in full-screen, never show them —
             // not even briefly on entry — and don't bother arming the auto-hide timer.
             if (Se.Settings.Video.FullscreenHideControls)
@@ -1646,7 +1804,7 @@ namespace Nikse.SubtitleEdit.Controls.VideoPlayer
 
             // Single one-shot timer reset on each user activity. Stops itself on tick so
             // Stop()+Start() reliably reschedules a fresh 3-second wait from "now" — a
-            // free-running periodic timer can drift out of phase with _lastActivityTime
+            // free-running periodic timer can drift out of phase with the last activity
             // and fail to hide after the user re-shows controls during playback.
             if (_autoHideTimer == null)
             {
@@ -1654,7 +1812,7 @@ namespace Nikse.SubtitleEdit.Controls.VideoPlayer
                 _autoHideTimer.Tick += (s, e) =>
                 {
                     _autoHideTimer?.Stop();
-                    if (IsFullScreen)
+                    if (IsFullScreen && !_isPlaybackSpeedMenuOpen)
                     {
                         HideControls();
                     }
@@ -1672,7 +1830,6 @@ namespace Nikse.SubtitleEdit.Controls.VideoPlayer
 
         private void OnUserActivity()
         {
-            _lastActivityTime = DateTime.UtcNow;
             if (IsFullScreen)
             {
                 // If the user opted to hide controls in full-screen, don't reveal them on activity.

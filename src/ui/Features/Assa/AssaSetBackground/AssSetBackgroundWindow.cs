@@ -1,5 +1,4 @@
 ﻿using System.Collections.Generic;
-using System.Linq;
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
@@ -8,7 +7,6 @@ using Avalonia.Data;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
-using Avalonia.Styling;
 using Nikse.SubtitleEdit.Features.Assa.AssaDraw;
 using Nikse.SubtitleEdit.Features.Main.Layout;
 using Nikse.SubtitleEdit.Logic;
@@ -356,13 +354,6 @@ public class AssSetBackgroundWindow : Window
         };
         grid.Add(progress, 0, 0);
         grid.Add(buttons, 0, 1);
-        return new Border
-        {
-            Child = grid,
-            Background = EditorChrome.ButtonBarBrush,
-            BorderBrush = EditorChrome.LineBrush,
-            BorderThickness = new Thickness(0, 1, 0, 0),
-            Padding = new Thickness(16, 10),
-        };
+        return EditorChrome.WrapButtonBar(grid);
     }
 }

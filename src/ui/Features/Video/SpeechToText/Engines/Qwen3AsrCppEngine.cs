@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -78,6 +79,19 @@ public class Qwen3AsrCppEngine : ISpeechToTextEngine
                     Urls =
                     [
                         "https://huggingface.co/OpenVoiceOS/qwen3-asr-0.6b-q8-0/resolve/main/qwen3-asr-0.6b-q8_0.gguf"
+                    ]
+                },
+                new WhisperModel
+                {
+                    // Danish fine-tune of Qwen3-ASR-0.6B (LoRA on 399 h CoRal/NST/FTSpeech, merged):
+                    // 18.8 vs 43.1 WER for the stock 0.6B on 600 held-out Danish clips. Needs
+                    // qwen3-asr.cpp v0.1.9+ (mel filterbank fix). Apache-2.0 with CoRal's
+                    // OpenRAIL-D restrictions (no speech synthesis, no biometric identification).
+                    Name = "qwen3-asr-0.6b-da-q8_0.gguf",
+                    Size = "1.0 GB",
+                    Urls =
+                    [
+                        "https://huggingface.co/niksedk/qwen3-asr-0.6b-danish/resolve/main/qwen3-asr-0.6b-da-q8_0.gguf"
                     ]
                 },
                 new WhisperModel
@@ -304,6 +318,71 @@ public class Qwen3AsrCppEngine : ISpeechToTextEngine
         var fileNameOnly = Path.GetFileName(url);
         var fileName = Path.Combine(folder, fileNameOnly);
         return fileName;
+    }
+
+    private static readonly Dictionary<string, bool> BeamSearchSupportCache = new();
+
+    /// <summary>
+    /// True when the installed qwen3-asr-cli understands --beam-size (v0.1.10+). Older builds
+    /// reject unknown arguments, so the flag must not be passed to them. Probed once per
+    /// executable (path + timestamp) via --help, which does not load a model.
+    /// </summary>
+    public bool SupportsBeamSearch
+    {
+        get
+        {
+            var exe = GetExecutable();
+            if (!File.Exists(exe))
+            {
+                return false;
+            }
+
+            var key = exe + "|" + File.GetLastWriteTimeUtc(exe).Ticks;
+            lock (BeamSearchSupportCache)
+            {
+                if (BeamSearchSupportCache.TryGetValue(key, out var cached))
+                {
+                    return cached;
+                }
+            }
+
+            var supported = false;
+            try
+            {
+                var psi = new ProcessStartInfo(exe, "--help")
+                {
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                };
+                using var process = Process.Start(psi);
+                if (process != null)
+                {
+                    var stdErr = process.StandardError.ReadToEndAsync();
+                    var stdOut = process.StandardOutput.ReadToEndAsync();
+                    if (process.WaitForExit(5000))
+                    {
+                        supported = (stdErr.Result + stdOut.Result).Contains("--beam-size", StringComparison.Ordinal);
+                    }
+                    else
+                    {
+                        try { process.Kill(); } catch { /* ignore */ }
+                    }
+                }
+            }
+            catch
+            {
+                supported = false;
+            }
+
+            lock (BeamSearchSupportCache)
+            {
+                BeamSearchSupportCache[key] = supported;
+            }
+
+            return supported;
+        }
     }
 
     public string GetExecutableFileName()
