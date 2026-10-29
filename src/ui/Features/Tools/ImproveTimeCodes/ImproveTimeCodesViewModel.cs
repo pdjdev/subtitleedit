@@ -192,12 +192,29 @@ public partial class ImproveTimeCodesViewModel : ObservableObject, IDisposable
 
             if (VideoPlayer != null && File.Exists(_videoFileName))
             {
-                _ = VideoPlayer.Open(_videoFileName);
+                _ = OpenVideoPlayerAsync(VideoPlayer);
             }
 
             PushParagraphsToVisualizers();
             StartPositionTimer();
         });
+    }
+
+    private async Task OpenVideoPlayerAsync(VideoPlayerControl player)
+    {
+        await player.Open(_videoFileName);
+
+        if (_disposed || !ReferenceEquals(VideoPlayer, player) || _audioTrackNumber < 0)
+        {
+            return;
+        }
+
+        var audioTrack = player.VideoPlayer?.GetAudioTracks()
+            .FirstOrDefault(track => track.FfIndex == _audioTrackNumber);
+        if (audioTrack != null)
+        {
+            player.VideoPlayer?.SetAudioTrack(audioTrack.Id);
+        }
     }
 
     /// <summary>
@@ -402,7 +419,7 @@ public partial class ImproveTimeCodesViewModel : ObservableObject, IDisposable
         }
         catch (Exception exception)
         {
-            Se.WriteToolsLog(exception is ForcedAlignerException e ? $"{e.Message}{Environment.NewLine}{e.Detail}" : exception.ToString());
+            Se.WriteToolsLog(exception is ForcedAlignerException e ? $"{e.Message}{Environment.NewLine}{e.Detail}" : exception.ToString(), true);
             return null;
         }
     }
@@ -582,7 +599,8 @@ public partial class ImproveTimeCodesViewModel : ObservableObject, IDisposable
         }
         catch (ForcedAlignerException exception)
         {
-            Se.WriteToolsLog(exception.Detail);
+            // Always kept: the engine's own output is what a bug report needs.
+            Se.WriteToolsLog($"{exception.Message}{Environment.NewLine}{exception.Detail}", true);
             StatusText = exception.Message;
             await MessageBox.Show(Window, Se.Language.General.Error, exception.Message, MessageBoxButtons.OK, MessageBoxIcon.Error);
         }

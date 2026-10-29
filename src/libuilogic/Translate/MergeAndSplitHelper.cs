@@ -271,7 +271,7 @@ public static partial class MergeAndSplitHelper
         // Strategy 1: Split by line ending chars where period count matches
         var splitResult = SplitMultipleLines(mergeResult, mergedTranslation, target.Code);
         if (IsSplitValid(splitResult, mergeCount, sourceTexts, 0) &&
-            HasMatchingPeriodCount(mergeResult.Text, mergedTranslation, sourceAbbreviations, targetAbbreviations))
+            (mergeResult.NoSentenceEndingSource || HasMatchingPeriodCount(mergeResult.Text, mergedTranslation, sourceAbbreviations, targetAbbreviations)))
         {
             return ApplySplitResult(rows, target, index, formattingList, splitResult, applyRowUpdate);
         }
@@ -287,7 +287,7 @@ public static partial class MergeAndSplitHelper
         var noPeriodsInNumbersTranslation = FixPeriodInNumbers(mergedTranslation);
         splitResult = SplitMultipleLines(mergeResult, noPeriodsInNumbersTranslation, target.Code);
         if (IsSplitValid(splitResult, mergeCount, sourceTexts, 0) &&
-            HasMatchingPeriodCount(mergeResult.Text, noPeriodsInNumbersTranslation, sourceAbbreviations, targetAbbreviations))
+            (mergeResult.NoSentenceEndingSource || HasMatchingPeriodCount(mergeResult.Text, noPeriodsInNumbersTranslation, sourceAbbreviations, targetAbbreviations)))
         {
             return ApplySplitResult(rows, target, index, formattingList, splitResult, applyRowUpdate, restorePeriodPlaceholder: true);
         }
@@ -485,9 +485,17 @@ public static partial class MergeAndSplitHelper
         Action<Action> applyRowUpdate)
     {
         var translatedLines = mergedTranslation.SplitToLines();
+        var separatorsOmitted = false;
         if (translatedLines.Count != mergeResult.Text.CountLines())
         {
-            return 0;
+            // Sources without sentence endings (Chinese/Japanese) are sent with "." separator lines.
+            // Models often drop them and reply with one line per row, so accept that reply too.
+            if (!mergeResult.NoSentenceEndingSource || translatedLines.Count != CountContentLines(mergeResult.Text))
+            {
+                return 0;
+            }
+
+            separatorsOmitted = true;
         }
 
         var translatedLinesIdx = 0;
@@ -498,7 +506,7 @@ public static partial class MergeAndSplitHelper
         foreach (var mergeItem in mergeResult.MergeResultItems)
         {
             var numberOfParagraphs = mergeItem.EndIndex - mergeItem.StartIndex + 1;
-            var numberOfLines = mergeItem.Text.CountLines();
+            var numberOfLines = separatorsOmitted ? CountContentLines(mergeItem.Text) : mergeItem.Text.CountLines();
 
             var translatedText = BuildTranslatedText(translatedLines, ref translatedLinesIdx, numberOfLines);
 
@@ -541,6 +549,11 @@ public static partial class MergeAndSplitHelper
             translatedLinesIdx++;
         }
         return sb.ToString().Trim();
+    }
+
+    private static int CountContentLines(string text)
+    {
+        return text.SplitToLines().Count(line => line.Trim() != ".");
     }
 
     private static string AutoBreakIfNeeded(string text, string language)

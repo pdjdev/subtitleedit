@@ -1,4 +1,5 @@
 ﻿using Avalonia;
+using Avalonia.Animation;
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Presenters;
@@ -294,6 +295,7 @@ namespace Nikse.SubtitleEdit.Controls.VideoPlayer
                 _buttonFullScreenCollapse.IsVisible = value;
                 _buttonFullScreen.IsVisible = !value;
                 _isFullScreen = value;
+                ApplyFullScreenLayout();
 
                 // Start or stop the auto-hide mechanism based on full screen state
                 if (value)
@@ -343,6 +345,12 @@ namespace Nikse.SubtitleEdit.Controls.VideoPlayer
         private double _probedDuration;
         private int _durationProbeGeneration;
         private readonly Grid _gridProgress; // Reference to the controls grid
+        private readonly LayoutTransformControl _controlsScale; // scales the controls up in full screen
+        private readonly Border _controlsBar; // holds the controls; fades, and overlays the video in full screen
+        private readonly Grid _mainGrid;
+        private Popup? _controlsPopup; // hosts the controls over a native player in full screen
+        private bool _controlsInPopup;
+        private int _controlsHideVersion;
         private DispatcherTimer? _autoHideTimer;
         private bool _isPlaybackSpeedMenuOpen;
 
@@ -584,6 +592,7 @@ namespace Nikse.SubtitleEdit.Controls.VideoPlayer
                 RowDefinitions = new RowDefinitions("*,Auto"), // video + controls
                 Background = Brushes.Transparent // Enable hit testing for pointer events
             };
+            _mainGrid = mainGrid;
 
             // PlayerContent
             var contentPresenter = new ContentPresenter
@@ -610,8 +619,21 @@ namespace Nikse.SubtitleEdit.Controls.VideoPlayer
             {
                 Margin = new Thickness(10, 4)
             };
-            Grid.SetRow(_gridProgress, 1);
-            mainGrid.Children.Add(_gridProgress);
+
+            // In full screen the controls are scaled up, laid over the video when the player
+            // allows it, and fade in and out instead of popping (#16306) - see ApplyFullScreenLayout.
+            _controlsScale = new LayoutTransformControl { Child = _gridProgress };
+            _controlsBar = new Border
+            {
+                Child = _controlsScale,
+                VerticalAlignment = VerticalAlignment.Bottom,
+                Transitions =
+                [
+                    new DoubleTransition { Property = OpacityProperty, Duration = TimeSpan.FromMilliseconds(ControlsFadeMilliseconds) },
+                ],
+            };
+            Grid.SetRow(_controlsBar, 1);
+            mainGrid.Children.Add(_controlsBar);
 
             // Attach a tunnel handler so we see clicks even if child handles them.
             mainGrid.AddHandler(InputElement.PointerPressedEvent, OnMainGridPointerPressed, RoutingStrategies.Tunnel, handledEventsToo: true);
@@ -957,28 +979,15 @@ namespace Nikse.SubtitleEdit.Controls.VideoPlayer
 
         private void OnMainGridPointerPressed(object? sender, PointerPressedEventArgs e)
         {
+            // Only a left click toggles play or opens a video - right/middle clicks must not
             var props = e.GetCurrentPoint(this).Properties;
-            if (props.PointerUpdateKind != PointerUpdateKind.LeftButtonPressed || _surfaceLeftButtonDown)
+            if (props.PointerUpdateKind != PointerUpdateKind.LeftButtonPressed)
             {
                 return;
             }
 
             // If the click is inside the controls row (_gridProgress), ignore it
-            var inControls = false;
-            try
-            {
-                var ptInControls = e.GetPosition(_gridProgress);
-                inControls =
-                    ptInControls.X >= 0 && ptInControls.Y >= 0 &&
-                    ptInControls.X <= _gridProgress.Bounds.Width &&
-                    ptInControls.Y <= _gridProgress.Bounds.Height;
-            }
-            catch
-            {
-                // ignore
-            }
-
-            if (inControls)
+            if (IsPointerOverControls(e))
             {
                 return;
             }
@@ -1011,11 +1020,32 @@ namespace Nikse.SubtitleEdit.Controls.VideoPlayer
                 return;
             }
 
+            _surfaceLeftButtonDown = false;
             var props = e.GetCurrentPoint(this).Properties;
             if (!props.IsLeftButtonPressed)
             {
-                _surfaceLeftButtonDown = false;
                 e.Pointer.Capture(null);
+            }
+        }
+
+        // Faded-out full-screen controls don't count: a click there goes to the video.
+        private bool IsPointerOverControls(PointerEventArgs e)
+        {
+            if (!_gridProgress.IsVisible || !_controlsBar.IsVisible || !_controlsBar.IsHitTestVisible)
+            {
+                return false;
+            }
+
+            try
+            {
+                var ptInControls = e.GetPosition(_gridProgress);
+                return ptInControls.X >= 0 && ptInControls.Y >= 0 &&
+                       ptInControls.X <= _gridProgress.Bounds.Width &&
+                       ptInControls.Y <= _gridProgress.Bounds.Height;
+            }
+            catch
+            {
+                return false;
             }
         }
 
@@ -1027,22 +1057,9 @@ namespace Nikse.SubtitleEdit.Controls.VideoPlayer
             }
 
             // Ignore wheel events over the controls row (sliders, buttons).
-            try
+            if (IsPointerOverControls(e))
             {
-                if (_gridProgress.IsVisible)
-                {
-                    var ptInControls = e.GetPosition(_gridProgress);
-                    if (ptInControls.X >= 0 && ptInControls.Y >= 0 &&
-                        ptInControls.X <= _gridProgress.Bounds.Width &&
-                        ptInControls.Y <= _gridProgress.Bounds.Height)
-                    {
-                        return;
-                    }
-                }
-            }
-            catch
-            {
-                // ignore
+                return;
             }
 
             var delta = e.Delta.Y;
@@ -1885,7 +1902,15 @@ namespace Nikse.SubtitleEdit.Controls.VideoPlayer
         {
             Dispatcher.UIThread.Post(() =>
             {
-                _gridProgress.IsVisible = true;
+                _controlsBar.IsVisible = true;
+                _controlsBar.IsHitTestVisible = true;
+                _controlsBar.Opacity = 1;
+                _controlsHideVersion++;
+                if (_controlsPopup != null && _controlsInPopup && !_controlsPopup.IsOpen && TopLevel.GetTopLevel(this) != null)
+                {
+                    _controlsPopup.IsOpen = true;
+                }
+
                 SetVideoCursorHidden(false);
             });
         }
@@ -1894,9 +1919,124 @@ namespace Nikse.SubtitleEdit.Controls.VideoPlayer
         {
             Dispatcher.UIThread.Post(() =>
             {
-                _gridProgress.IsVisible = false;
+                // Faded out but still laid out, so the video keeps its size (#16306). With
+                // "hide controls in full screen" they are never shown, so the video gets the room.
+                _controlsBar.IsHitTestVisible = false;
+                _controlsBar.Opacity = 0;
+                _controlsBar.IsVisible = !Se.Settings.Video.FullscreenHideControls;
                 SetVideoCursorHidden(true);
+
+                // A faded-out popup would still be a window over the video, catching the mouse
+                // (and showing the pointer) - close it once the fade is done. Task.Delay, not a
+                // DispatcherTimer: the native mpv window can starve those.
+                if (_controlsPopup != null && _controlsInPopup)
+                {
+                    var version = ++_controlsHideVersion;
+                    _ = Task.Delay(ControlsFadeMilliseconds + 50).ContinueWith(_ => Dispatcher.UIThread.Post(() =>
+                    {
+                        if (version == _controlsHideVersion && _controlsPopup != null)
+                        {
+                            _controlsPopup.IsOpen = false;
+                        }
+                    }));
+                }
             });
+        }
+
+        internal const double FullScreenControlsScale = 1.4;
+        private const int ControlsFadeMilliseconds = 250;
+
+        /// <summary>
+        /// Full screen: bigger controls that are easier to hit on a large screen, laid over the
+        /// bottom of the video on a translucent bar (#16306). A native player window (mpv "wid",
+        /// VLC) is drawn on top of anything Avalonia draws in the same window, so with those the
+        /// bar is hosted in a popup - its own top-level window - which can sit over the video.
+        /// </summary>
+        private void ApplyFullScreenLayout()
+        {
+            _controlsScale.LayoutTransform = _isFullScreen
+                ? new ScaleTransform(FullScreenControlsScale, FullScreenControlsScale)
+                : null;
+
+            SetControlsInPopup(_isFullScreen && PlayerContent is NativeControlHost);
+            Grid.SetRow(_controlsBar, _isFullScreen ? 0 : 1);
+            _controlsBar.Background = _isFullScreen && EditorChrome.WindowBrush is ISolidColorBrush window
+                ? new SolidColorBrush(window.Color, 0.8)
+                : null;
+        }
+
+        private void SetControlsInPopup(bool inPopup)
+        {
+            if (inPopup == _controlsInPopup)
+            {
+                return;
+            }
+
+            _controlsInPopup = inPopup;
+            if (inPopup)
+            {
+                _mainGrid.Children.Remove(_controlsBar);
+                _controlsPopup ??= CreateControlsPopup();
+                _controlsPopup.Child = _controlsBar;
+                _controlsBar.Width = Bounds.Width > 0 ? Bounds.Width : double.NaN;
+                if (TopLevel.GetTopLevel(this) != null && _controlsBar.IsVisible && _controlsBar.Opacity > 0)
+                {
+                    _controlsPopup.IsOpen = true;
+                }
+            }
+            else if (_controlsPopup != null)
+            {
+                _controlsPopup.IsOpen = false;
+                _controlsPopup.Child = null;
+                _controlsBar.Width = double.NaN;
+                _mainGrid.Children.Add(_controlsBar);
+            }
+        }
+
+        private Popup CreateControlsPopup()
+        {
+            var popup = new Popup
+            {
+                PlacementTarget = this,
+                Placement = PlacementMode.AnchorAndGravity,
+                PlacementAnchor = Avalonia.Controls.Primitives.PopupPositioning.PopupAnchor.Bottom,
+                PlacementGravity = Avalonia.Controls.Primitives.PopupPositioning.PopupGravity.Top,
+                IsLightDismissEnabled = false,
+                TakesFocusFromNativeControl = false,
+
+                // The popup is checked against the screen's working area, which leaves out the
+                // taskbar - a bar on the bottom edge of a full-screen window would not "fit" there,
+                // and got flipped to the top of the screen.
+                PlacementConstraintAdjustment = Avalonia.Controls.Primitives.PopupPositioning.PopupPositionerConstraintAdjustment.None,
+            };
+            _mainGrid.Children.Add(popup);
+
+            // Opened before the window reached its full-screen size, or with the window resized:
+            // match the width and re-place the popup at the new bottom edge.
+            SizeChanged += (_, e) =>
+            {
+                if (!_controlsInPopup)
+                {
+                    return;
+                }
+
+                _controlsBar.Width = e.NewSize.Width;
+                if (popup.IsOpen)
+                {
+                    popup.IsOpen = false;
+                    popup.IsOpen = true;
+                }
+            };
+
+            AttachedToVisualTree += (_, _) =>
+            {
+                if (_controlsInPopup && _controlsBar.IsVisible && _controlsBar.Opacity > 0)
+                {
+                    Dispatcher.UIThread.Post(() => popup.IsOpen = _controlsInPopup && _controlsBar.Opacity > 0);
+                }
+            };
+
+            return popup;
         }
 
         /// <summary>

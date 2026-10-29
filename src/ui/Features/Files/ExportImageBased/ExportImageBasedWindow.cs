@@ -9,6 +9,7 @@ using Avalonia.Media;
 using Nikse.SubtitleEdit.Features.Main;
 using Nikse.SubtitleEdit.Logic;
 using Nikse.SubtitleEdit.Logic.Config;
+using Nikse.SubtitleEdit.Logic.Platform.Progress;
 using Nikse.SubtitleEdit.Logic.ValueConverters;
 using System.Collections.ObjectModel;
 
@@ -178,7 +179,7 @@ public class ExportImageBasedWindow : Window
             ColumnDefinitions = { new ColumnDefinition(GridLength.Auto), new ColumnDefinition(GridLength.Auto), new ColumnDefinition(new GridLength(1, GridUnitType.Star)) },
         };
         row.Add(toggle, 0, 0);
-        row.Add(new TextBlock { Text = text, FontSize = 12.5, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap }, 0, 1);
+        row.Add(new TextBlock { Text = text, FontSize = EditorChrome.FieldFontSize, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap }, 0, 1);
         if (after.Length > 0)
         {
             row.Add(Horizontal(after), 0, 2);
@@ -269,7 +270,7 @@ public class ExportImageBasedWindow : Window
             cell.Children.Add(new TextBlock
             {
                 Text = name,
-                FontSize = 10.5,
+                FontSize = EditorChrome.ScaledFont(10.5),
                 Foreground = EditorChrome.FaintTextBrush,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 TextTrimming = TextTrimming.CharacterEllipsis,
@@ -330,7 +331,7 @@ public class ExportImageBasedWindow : Window
         browsePlane3D.Bind(IsEnabledProperty, new Binding(nameof(vm.IsDepth3DEnabled)) { Source = vm });
         var plane3DFile = new TextBlock
         {
-            FontSize = 12,
+            FontSize = EditorChrome.FieldFontSize,
             Foreground = EditorChrome.DimTextBrush,
             VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
@@ -535,7 +536,7 @@ public class ExportImageBasedWindow : Window
 
         var count = new TextBlock
         {
-            FontSize = 12,
+            FontSize = EditorChrome.FieldFontSize,
             Foreground = EditorChrome.FaintTextBrush,
             VerticalAlignment = VerticalAlignment.Center,
             [!TextBlock.TextProperty] = new Binding($"{nameof(vm.Subtitles)}.Count") { Source = vm },
@@ -587,7 +588,7 @@ public class ExportImageBasedWindow : Window
 
         var imageInfo = new TextBlock
         {
-            FontSize = 12,
+            FontSize = EditorChrome.FieldFontSize,
             Foreground = EditorChrome.DimTextBrush,
             VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
@@ -611,15 +612,16 @@ public class ExportImageBasedWindow : Window
         };
     }
 
-    private static Border MakeProgressView(ExportImageBasedViewModel vm)
+    private Border MakeProgressView(ExportImageBasedViewModel vm)
     {
         var progressBar = UiUtil.MakeProgressBar();
         progressBar.VerticalAlignment = VerticalAlignment.Center;
         progressBar.Bind(ProgressBar.ValueProperty, new Binding(nameof(vm.ProgressValue)));
+        progressBar.WithPlatformProgress(this, nameof(vm.IsGenerating));
 
         var statusText = new TextBlock
         {
-            FontSize = 12,
+            FontSize = EditorChrome.FieldFontSize,
             Foreground = EditorChrome.DimTextBrush,
             VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,

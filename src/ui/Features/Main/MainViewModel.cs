@@ -1355,6 +1355,8 @@ public partial class MainViewModel :
     {
         Se.ApplyRuleSettingsToLibSe();
 
+        Configuration.Settings.General.DefaultEncoding = Se.Settings.General.DefaultEncoding;
+
         TimedTextImscRosetta.LineHeight = Se.Settings.Formats.RosettaLineHeight;
         TimedTextImscRosetta.FontSize = Se.Settings.Formats.RosettaFontSize;
         if (Se.Settings.Formats.RosettaLanguageAutoDetect)
@@ -3036,7 +3038,8 @@ public partial class MainViewModel :
 
         var result = await ShowDialogAsync<AssaSetPositionWindow, AssaSetPositionViewModel>(vm =>
         {
-            vm.Initialize(_subtitle, selectedItem, _videoFileName, _mediaInfo?.Dimension.Width, _mediaInfo?.Dimension.Height, GetVideoPlayerControl()?.Position);
+            var videoPlayerControl = GetVideoPlayerControl();
+            vm.Initialize(_subtitle, selectedItem, _videoFileName, _mediaInfo?.Dimension.Width, _mediaInfo?.Dimension.Height, videoPlayerControl?.Position, videoPlayerControl?.VideoPlayer);
         });
 
         if (!result.OkPressed)
@@ -3482,6 +3485,9 @@ public partial class MainViewModel :
             InsertReferenceOnlyRows(match.Unmatched);
         }
 
+        ClearOriginalTimeCodes();
+        SyncOriginalTimeCodesFromLinkedLines();
+
         _changeSubtitleHashOriginal = GetFastHashOriginal();
         ShowColumnOriginalText = true;
 
@@ -3689,6 +3695,7 @@ public partial class MainViewModel :
             }
 
             RepositionReferenceOnlyRows();
+            SyncOriginalTimeCodesFromLinkedLines();
         }
         finally
         {
@@ -4053,7 +4060,14 @@ public partial class MainViewModel :
             line.ReferenceParagraphId is { } id &&
             linesById.TryGetValue(id, out var originalLine))
         {
-            return new Paragraph(originalLine) { Text = line.OriginalText.TrimEnd() };
+            var p = new Paragraph(originalLine) { Text = line.OriginalText.TrimEnd() };
+            if (line.HasOwnOriginalTimeCodes)
+            {
+                p.StartTime = new TimeCode(line.EffectiveOriginalStartTime);
+                p.EndTime = new TimeCode(line.EffectiveOriginalEndTime);
+            }
+
+            return p;
         }
 
         return line.ToParagraphOriginal(format);
@@ -4237,6 +4251,9 @@ public partial class MainViewModel :
             {
                 InsertReferenceOnlyRows(match.Unmatched);
             }
+
+            ClearOriginalTimeCodes();
+            SyncOriginalTimeCodesFromLinkedLines();
         }
         finally
         {
@@ -4278,6 +4295,7 @@ public partial class MainViewModel :
             {
                 line.OriginalText = string.Empty;
                 line.ReferenceParagraphId = null;
+                line.SetOriginalTimeCodes(null, null);
             }
 
             _changeSubtitleHashOriginal = GetFastHashOriginal();
@@ -4607,14 +4625,14 @@ public partial class MainViewModel :
                 _mpvReloader.Reset();
                 // Through RunPreviewRefresh so a rejected push (player just recreated, mpv not
                 // playing yet) arms the dirty-flag retry instead of being lost (#13407).
-                _ = RunPreviewRefresh(() => _mpvReloader.RefreshMpv(mpv, GetVideoPreviewSubtitle(), _subtitleSecondary, SelectedSubtitleFormat, subtitleIsOwned: true));
+                _ = RunPreviewRefresh(() => _mpvReloader.RefreshMpv(mpv, GetVideoPreviewSubtitle(), GetSecondaryPreviewSubtitle(), SelectedSubtitleFormat, subtitleIsOwned: true));
             }
             else if (vp.VideoPlayer is LibVlcDynamicPlayer vlc)
             {
                 _vlcReloader.Reset();
                 _ = RunPreviewRefresh(async () =>
                 {
-                    await _vlcReloader.RefreshVlc(vlc, GetVideoPreviewSubtitle(), _subtitleSecondary, SelectedSubtitleFormat, subtitleIsOwned: true);
+                    await _vlcReloader.RefreshVlc(vlc, GetVideoPreviewSubtitle(), GetSecondaryPreviewSubtitle(), SelectedSubtitleFormat, subtitleIsOwned: true);
                     return true;
                 });
             }
@@ -4632,7 +4650,24 @@ public partial class MainViewModel :
     private void PushFfmpegPreview(FfmpegPlayer ffmpeg, Subtitle subtitle)
     {
         ffmpeg.PreviewSubtitlesVisible = _mpvReloader.SubtitlesEffectivelyVisible;
-        ffmpeg.PreviewSubtitle = FfmpegPreviewSubtitle.Build(subtitle, _subtitleSecondary, _mpvReloader.SmpteMode);
+        ffmpeg.PreviewSubtitle = FfmpegPreviewSubtitle.Build(subtitle, GetSecondaryPreviewSubtitle(), _mpvReloader.SmpteMode);
+    }
+
+    /// <summary>
+    /// The second subtitle on the video timeline: its file times minus the video offset, the same
+    /// split the main file gets on open (<see cref="SubtitleOpen"/>). Applied per push rather than
+    /// baked into <see cref="_subtitleSecondary"/>, so an offset change re-aligns it.
+    /// </summary>
+    private Subtitle? GetSecondaryPreviewSubtitle()
+    {
+        if (_subtitleSecondary == null || Se.Settings.General.CurrentVideoOffsetInMs == 0)
+        {
+            return _subtitleSecondary;
+        }
+
+        var shifted = new Subtitle(_subtitleSecondary);
+        shifted.AddTimeToAllParagraphs(TimeSpan.FromMilliseconds(-Se.Settings.General.CurrentVideoOffsetInMs));
+        return shifted;
     }
 
     [RelayCommand]
@@ -7945,6 +7980,11 @@ public partial class MainViewModel :
             {
                 subtitle.Paragraphs.Add(new Paragraph(lines[i], 0, 0));
             }
+        }
+        else
+        {
+            // grid copy adds the video offset to the clipboard time codes, so take it off again
+            SubtitleGridCopyPasteHelper.RemoveClipboardVideoOffset(text, subtitle);
         }
 
         if (subtitle.Paragraphs.Count == 0)
@@ -12052,6 +12092,11 @@ public partial class MainViewModel :
             }
         }
 
+        if (IsSubtitleSecondaryVisible)
+        {
+            PushSecondarySubtitle();
+        }
+
         UpdateVideoOffsetStatus();
         _updateAudioVisualizer = true;
     }
@@ -14839,12 +14884,31 @@ public partial class MainViewModel :
 
         EndToolApply(toolApply, () =>
         {
+            var returnedIds = new HashSet<Guid>();
             foreach (var paragraph in result.FixedSubtitle.Paragraphs)
             {
                 if (paragraph.Id.HasValue && rowByParagraphId.TryGetValue(paragraph.Id.Value, out var row))
                 {
                     row.Text = paragraph.Text;
+                    returnedIds.Add(paragraph.Id.Value);
                 }
+            }
+
+            // A line the dialog no longer returns was deleted there (its Delete, or a fix like
+            // "Remove empty lines") - drop its row too, instead of silently keeping it.
+            var deletedRows = rowByParagraphId
+                .Where(kv => !returnedIds.Contains(kv.Key))
+                .Select(kv => kv.Value)
+                .ToList();
+            foreach (var row in deletedRows)
+            {
+                Subtitles.Remove(row);
+            }
+
+            if (deletedRows.Count > 0)
+            {
+                Renumber();
+                _updateAudioVisualizer = true;
             }
         });
     }
@@ -15251,6 +15315,7 @@ public partial class MainViewModel :
         UiUtil.SetFontName(Se.Settings.Appearance.FontName);
         UiTheme.SetCurrentTheme();
         InitMenu.ApplyFontSize(Menu);
+        MainView?.ApplyEditorStyles(); // field font size and height follow the UI font size
 
         if (ToolbarTopSeparator != null)
         {
@@ -15410,12 +15475,12 @@ public partial class MainViewModel :
             if (vp.VideoPlayer is LibMpvDynamicPlayer mpv)
             {
                 _mpvReloader.Reset();
-                _mpvReloader.RefreshMpv(mpv, GetVideoPreviewSubtitle(), _subtitleSecondary, SelectedSubtitleFormat, subtitleIsOwned: true);
+                _mpvReloader.RefreshMpv(mpv, GetVideoPreviewSubtitle(), GetSecondaryPreviewSubtitle(), SelectedSubtitleFormat, subtitleIsOwned: true);
             }
             else if (vp.VideoPlayer is LibVlcDynamicPlayer vlc)
             {
                 _vlcReloader.Reset();
-                _vlcReloader.RefreshVlc(vlc, GetVideoPreviewSubtitle(), _subtitleSecondary, SelectedSubtitleFormat, subtitleIsOwned: true);
+                _vlcReloader.RefreshVlc(vlc, GetVideoPreviewSubtitle(), GetSecondaryPreviewSubtitle(), SelectedSubtitleFormat, subtitleIsOwned: true);
             }
             else if (vp.VideoPlayer is FfmpegPlayer ffmpeg)
             {
@@ -19041,7 +19106,7 @@ public partial class MainViewModel :
         });
     }
 
-    private async Task<MessageBoxResult> ShowWrapAroundDialog(string message)
+    private async Task<MessageBoxResult> ShowWrapAroundDialog(string message, string? title = null)
     {
         if (Window == null)
         {
@@ -19052,7 +19117,7 @@ public partial class MainViewModel :
         var dialogWindow = (findWin?.IsVisible == true ? findWin : null)
                         ?? (replaceWin?.IsVisible == true ? replaceWin : null);
         var parentWindow = dialogWindow ?? Window!;
-        return await MessageBox.Show(parentWindow, Se.Language.General.ContinueFindTitle,
+        return await MessageBox.Show(parentWindow, title ?? Se.Language.General.ContinueFindTitle,
             message, MessageBoxButtons.YesNo, MessageBoxIcon.Question);
     }
 
@@ -19271,29 +19336,35 @@ public partial class MainViewModel :
             }
             else if (result.ReplaceAllPressed)
             {
-                var replaceCount = _findService.ReplaceAll(result.SearchText, result.ReplaceText);
-
-                for (var i = 0; i < Subtitles.Count && i < subs.Count; i++)
+                // Like SE 4: replace from the current line to the end, then ask before going on
+                // from the top - replacing above the current line without asking surprised users
+                // working down the file (#16453). Both passes are one undo step.
+                var startLine = Math.Max(0, currentLineIndex);
+                int replaceCount;
+                _undoRedoManager.CheckForChanges(null);
+                _undoRedoManager.StopChangeDetection();
+                try
                 {
-                    var s = Subtitles[i];
-                    var newText = subs[i];
-                    if (newText != s.Text)
-                    {
-                        s.Text = newText;
-                    }
-                }
+                    replaceCount = _findService.ReplaceAll(result.SearchText, result.ReplaceText, startLine);
+                    ApplyReplacedLines(subs, origs);
 
-                if (origs != null)
-                {
-                    for (var i = 0; i < Subtitles.Count && i < origs.Count; i++)
+                    if (startLine > 0)
                     {
-                        var s = Subtitles[i];
-                        var newText = origs[i];
-                        if (newText != s.OriginalText)
+                        var message = replaceCount > 0
+                            ? string.Format(Se.Language.General.ReplacedXContinueFromTop, replaceCount)
+                            : Se.Language.General.ReplaceNotFoundContinueFromTop;
+                        var answer = await ShowWrapAroundDialog(message, Se.Language.General.ContinueReplaceTitle);
+                        _shortcutManager.ClearKeys();
+                        if (answer == MessageBoxResult.Yes)
                         {
-                            s.OriginalText = newText;
+                            replaceCount += _findService.ReplaceAll(result.SearchText, result.ReplaceText, 0, startLine);
+                            ApplyReplacedLines(subs, origs);
                         }
                     }
+                }
+                finally
+                {
+                    _undoRedoManager.StartChangeDetection();
                 }
 
                 ShowStatus(string.Format(Se.Language.Main.ReplacedXWithYCountZ, result.SearchText, result.ReplaceText, replaceCount));
@@ -19366,6 +19437,32 @@ public partial class MainViewModel :
             }
 
             ShowFindMatch(idx, _findService.CurrentTextFound, _findService.CurrentLineNumber, _findService.CurrentTextIndex, _findService.CurrentMatchInOriginal);
+        }
+    }
+
+    private void ApplyReplacedLines(List<string> subs, List<string>? origs)
+    {
+        for (var i = 0; i < Subtitles.Count && i < subs.Count; i++)
+        {
+            var s = Subtitles[i];
+            var newText = subs[i];
+            if (newText != s.Text)
+            {
+                s.Text = newText;
+            }
+        }
+
+        if (origs != null)
+        {
+            for (var i = 0; i < Subtitles.Count && i < origs.Count; i++)
+            {
+                var s = Subtitles[i];
+                var newText = origs[i];
+                if (newText != s.OriginalText)
+                {
+                    s.OriginalText = newText;
+                }
+            }
         }
     }
 
@@ -19561,12 +19658,12 @@ public partial class MainViewModel :
         if (vp.VideoPlayer is LibMpvDynamicPlayer mpv)
         {
             _mpvReloader.Reset();
-            _ = RunPreviewRefresh(() => _mpvReloader.RefreshMpv(mpv, GetVideoPreviewSubtitle(), _subtitleSecondary, SelectedSubtitleFormat, subtitleIsOwned: true));
+            _ = RunPreviewRefresh(() => _mpvReloader.RefreshMpv(mpv, GetVideoPreviewSubtitle(), GetSecondaryPreviewSubtitle(), SelectedSubtitleFormat, subtitleIsOwned: true));
         }
         else if (vp.VideoPlayer is LibVlcDynamicPlayer vlc)
         {
             _vlcReloader.Reset();
-            _vlcReloader.RefreshVlc(vlc, GetVideoPreviewSubtitle(), _subtitleSecondary, SelectedSubtitleFormat, subtitleIsOwned: true);
+            _vlcReloader.RefreshVlc(vlc, GetVideoPreviewSubtitle(), GetSecondaryPreviewSubtitle(), SelectedSubtitleFormat, subtitleIsOwned: true);
         }
         else if (vp.VideoPlayer is FfmpegPlayer ffmpeg)
         {
@@ -20546,6 +20643,8 @@ public partial class MainViewModel :
         _fullScreenVideoPlayerControl.PositionChanged += OnVideoPlayerPositionSet;
         var toggleKeys = Se.Settings.Shortcuts
             .FirstOrDefault(s => s.ActionName == nameof(VideoFullScreenCommand))?.Keys;
+        var toggleKeys2 = Se.Settings.Shortcuts
+            .FirstOrDefault(s => s.ActionName == nameof(VideoFullScreen2Command))?.Keys;
         var showMediaInfoKeys = Se.Settings.Shortcuts
             .FirstOrDefault(s => s.ActionName == nameof(ShowMediaInformationCommand))?.Keys;
         Action<Window> showMediaInformationOwnedBy = ownerWindow =>
@@ -20610,7 +20709,7 @@ public partial class MainViewModel :
             RefreshSubtitlePreview();
 
             Dispatcher.UIThread.Post(() => TableViewExtras.FocusRow(SubtitleGrid));
-        }, toggleKeys, showMediaInfoKeys, showMediaInformationOwnedBy, extraBindings, readyPlayer =>
+        }, toggleKeys, toggleKeys2, showMediaInfoKeys, showMediaInformationOwnedBy, extraBindings, readyPlayer =>
         {
             // Runs once the fullscreen player has actually opened the file (see the window's
             // Loaded handler). Both of these re-apply state a brand new mpv instance starts
@@ -20635,6 +20734,12 @@ public partial class MainViewModel :
         // fullscreen mpv core is initialized lazily by its rendering surface and has not even
         // loaded the video yet, so mpv rejected the sub-add and nothing tried again (#13407).
         RefreshSubtitlePreview();
+    }
+
+    [RelayCommand]
+    private void VideoFullScreen2()
+    {
+        VideoFullScreen();
     }
 
     private void OnMainWindowActivatedWhileFullScreen(object? sender, EventArgs e) => _fullScreenOwnsKeyboard = false;
@@ -22952,11 +23057,11 @@ public partial class MainViewModel :
     private void RefreshRuleProfiles()
     {
         var names = Se.Settings.General.Profiles.Select(p => p.Name).ToList();
-        var current = Se.Settings.General.CurrentProfile;
-        if (!names.Contains(current))
-        {
-            current = names.FirstOrDefault();
-        }
+
+        // A current profile that is not in the list (renamed, deleted, stale settings) shows as
+        // no selection: picking the first name here would apply that profile and overwrite the
+        // user's limits without them choosing it.
+        var current = names.Contains(Se.Settings.General.CurrentProfile) ? Se.Settings.General.CurrentProfile : null;
 
         if (!RuleProfiles.SequenceEqual(names))
         {
@@ -28517,7 +28622,12 @@ public partial class MainViewModel :
     {
         DetachSubtitleGridItemsSource(SubtitleGrid);
 
+        var originalTimeCodes = subtitleOriginal != null && Subtitles.Count == subtitle.Paragraphs.Count
+            ? Subtitles.Select(p => (p.OriginalStartTime, p.OriginalEndTime, p.StartTime, p.EndTime)).ToList()
+            : null;
+
         Subtitles.Clear();
+        UpdateYttPenLookup(subtitle.Header);
         foreach (var p in subtitle.Paragraphs)
         {
             Subtitles.Add(new SubtitleLineViewModel(p, SelectedSubtitleFormat));
@@ -28530,6 +28640,17 @@ public partial class MainViewModel :
                 var p = subtitle.Paragraphs[i];
                 var original = subtitleOriginal.Paragraphs[i];
                 Subtitles[i].OriginalText = original.Text;
+                if (originalTimeCodes != null)
+                {
+                    var (originalStart, originalEnd, oldStart, oldEnd) = originalTimeCodes[i];
+                    if (Se.Settings.General.LockOriginalToTranslation)
+                    {
+                        originalStart += Subtitles[i].StartTime - oldStart;
+                        originalEnd += Subtitles[i].EndTime - oldEnd;
+                    }
+
+                    Subtitles[i].SetOriginalTimeCodes(originalStart, originalEnd);
+                }
             }
         }
 
@@ -29180,7 +29301,7 @@ public partial class MainViewModel :
                 if (row.ReferenceParagraphId != null || !string.IsNullOrEmpty(row.OriginalText))
                 {
                     editedCues.Add(new WaveformOriginalSubtitleCue(
-                        row.StartTime.TotalSeconds, row.EndTime.TotalSeconds, row.OriginalText));
+                        row.EffectiveOriginalStartTime.TotalSeconds, row.EffectiveOriginalEndTime.TotalSeconds, row.OriginalText));
                 }
             }
 
@@ -29206,10 +29327,26 @@ public partial class MainViewModel :
             if (paragraph.Id is { } id && rowsByReferenceId.TryGetValue(id, out var row))
             {
                 text = row.OriginalText;
+                if (!IsOriginalReadOnly)
+                {
+                    start = row.EffectiveOriginalStartTime.TotalSeconds;
+                    end = row.EffectiveOriginalEndTime.TotalSeconds;
+                }
             }
 
             cues.Add(new WaveformOriginalSubtitleCue(start, end, text));
         }
+
+        foreach (var row in Subtitles)
+        {
+            if (row.ReferenceParagraphId == null && !string.IsNullOrEmpty(row.OriginalText))
+            {
+                cues.Add(new WaveformOriginalSubtitleCue(
+                    row.EffectiveOriginalStartTime.TotalSeconds, row.EffectiveOriginalEndTime.TotalSeconds, row.OriginalText));
+            }
+        }
+
+        cues.Sort((a, b) => a.StartSeconds.CompareTo(b.StartSeconds));
 
         audioVisualizer.SetOriginalSubtitleCues(cues);
     }
@@ -31497,6 +31634,8 @@ public partial class MainViewModel :
                 hash = hash * 23 + p.EndTime.TotalMilliseconds.GetHashCode();
                 hash = hash * 23 + (p.Text?.GetHashCode() ?? 0);
                 hash = hash * 23 + (p.OriginalText?.GetHashCode() ?? 0);
+                hash = hash * 23 + p.OriginalStartTime.GetHashCode();
+                hash = hash * 23 + p.OriginalEndTime.GetHashCode();
                 hash = hash * 23 + (p.Style?.GetHashCode() ?? 0);
                 hash = hash * 23 + (p.Extra?.GetHashCode() ?? 0);
                 hash = hash * 23 + (p.Actor?.GetHashCode() ?? 0);
@@ -31607,6 +31746,9 @@ public partial class MainViewModel :
                 {
                     hash = hash * 23 + p.OriginalText.GetHashCode();
                 }
+
+                hash = hash * 23 + p.OriginalStartTime.GetHashCode();
+                hash = hash * 23 + p.OriginalEndTime.GetHashCode();
 
                 hash = hash * 23 + (p.Style?.GetHashCode() ?? 0);
                 hash = hash * 23 + (p.Extra?.GetHashCode() ?? 0);
@@ -32439,6 +32581,7 @@ public partial class MainViewModel :
             (selectedCount > 1 || (selectedCount == 1 && idx < count - 1));
         AreAssaContentMenuItemsVisible = false;
         AreWebVttContentMenuItemsVisible = false;
+        AreYttContentMenuItemsVisible = false;
         IsWebVttBrowserPreviewVisible = false;
         ShowAutoTranslateSelectedLines = selectedCount > 0;
         HasMultipleLinesSelected = selectedCount > 1;
@@ -32635,6 +32778,11 @@ public partial class MainViewModel :
                 AreWebVttContentMenuItemsVisible = true;
                 IsWebVttBrowserPreviewVisible = WebVttBrowserPreview.IsSupportedVideoFile(_videoFileName);
                 FillWebVttVoicesMenu();
+            }
+            else if (IsFormatYtt && selectedCount > 0)
+            {
+                AreYttContentMenuItemsVisible = true;
+                FillYttMenu();
             }
         }
 
@@ -34936,6 +35084,7 @@ public partial class MainViewModel :
 
     private void OnSubtitleItemChangedForMpv(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
+
         if (e.PropertyName is nameof(SubtitleLineViewModel.StartTime))
         {
             _mpvPreviewDirty = true;
@@ -34963,7 +35112,9 @@ public partial class MainViewModel :
             // the edit box or dragged an end time in the waveform.
             _mpvPreviewDirty = true;
         }
-        else if (e.PropertyName is nameof(SubtitleLineViewModel.OriginalText))
+        else if (e.PropertyName is nameof(SubtitleLineViewModel.OriginalText)
+            or nameof(SubtitleLineViewModel.OriginalStartTime)
+            or nameof(SubtitleLineViewModel.OriginalEndTime))
         {
             // Original cues are snapshots, so rebuild them after the original text changes.
             _updateAudioVisualizer = true;
@@ -35535,6 +35686,7 @@ public partial class MainViewModel :
                     // O(n log n) sort after a cheap early-exit ordered check.
                     ListSortUtil.SortIfNeeded(subtitle, static (a, b) => a.StartTime.Ticks.CompareTo(b.StartTime.Ticks));
                 }
+
 
                 // The playhead cursor is interpolated and applied by the dedicated high-frequency
                 // _cursorTimer (see UpdatePlayheadEstimate) so it moves at ~60 fps instead of this
@@ -37347,6 +37499,8 @@ public partial class MainViewModel :
                 // Clear the stored pointer args after use
                 _lastTextEditorPointerArgs = null;
             }
+
+            AddYttTextBoxMenuItems(flyout);
         }
     }
 
@@ -37397,6 +37551,9 @@ public partial class MainViewModel :
         MenuItemAudioVisualizerCloneVoice.IsVisible = false;
         MenuItemAudioVisualizerCopy.IsVisible = false;
         MenuItemAudioVisualizerCopyText.IsVisible = false;
+
+        MenuItemAudioVisualizerLockOriginalToTranslation.IsVisible = CanEditOriginalTimeCodes;
+        MenuItemAudioVisualizerLockOriginalToTranslation.IsChecked = Se.Settings.General.LockOriginalToTranslation;
 
         if (e.NewParagraph != null)
         {
@@ -37673,6 +37830,8 @@ public partial class MainViewModel :
         IsFormatSsa = SelectedSubtitleFormat is SubStationAlpha;
         IsFormatAssaOrSsa = SelectedSubtitleFormat is AdvancedSubStationAlpha or SubStationAlpha;
         IsFormatWebVtt = SelectedSubtitleFormat is WebVTT or WebVTTFileWithLineNumber;
+        IsFormatYtt = SelectedSubtitleFormat is YouTubeTimedText;
+        UpdateYttPenLookup(_subtitle.Header);
         IsFormatEbu = SelectedSubtitleFormat is Ebu;
         IsFormatTeletext = SelectedSubtitleFormat is Ebu or DvbTeletext;
         UpdateTeletextLineLength();
@@ -37681,7 +37840,7 @@ public partial class MainViewModel :
 
         UpdateTemporaryFrameMode();
 
-        HasFormatStyle = IsFormatAssaOrSsa || IsFormatWebVtt;
+        HasFormatStyle = IsFormatAssaOrSsa || IsFormatWebVtt || IsFormatYtt;
         ShowActorColumnMenuHeader = IsFormatWebVtt
             ? Se.Language.File.WebVtt.ShowVoiceColumn
             : Se.Language.General.ShowActorColumn;

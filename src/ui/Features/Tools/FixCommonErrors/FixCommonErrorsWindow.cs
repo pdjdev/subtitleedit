@@ -48,24 +48,24 @@ public class FixCommonErrorsWindow : Window
         var labelStep1 = new TextBlock
         {
             Text = Se.Language.Tools.FixCommonErrors.FixCommonOcrErrorsStep1,
-            FontSize = 13,
+            FontSize = EditorChrome.FieldFontSize,
             FontWeight = FontWeight.SemiBold,
             VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
             Margin = new Thickness(4, 0, 12, 0),
         };
-        labelStep1.Bind(IsVisibleProperty, new Binding(nameof(vm.Step1IsVisible)));
+        labelStep1.Bind(IsVisibleProperty, new Binding(nameof(vm.IsStepOne)));
 
         var labelStep2 = new TextBlock
         {
-            FontSize = 13,
+            FontSize = EditorChrome.FieldFontSize,
             FontWeight = FontWeight.SemiBold,
             VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
             Margin = new Thickness(4, 0, 12, 0),
         };
         labelStep2.Bind(TextBlock.TextProperty, new Binding(nameof(vm.Step2Title)));
-        labelStep2.Bind(IsVisibleProperty, new Binding(nameof(vm.Step2IsVisible)));
+        labelStep2.Bind(IsVisibleProperty, new Binding("!" + nameof(vm.IsStepOne)));
 
         var textBoxSearch = UiUtil.MakeTextBox(250, vm, nameof(vm.SearchText)).WithMarginRight(16)
             .WithAccessibleName(Se.Language.Tools.FixCommonErrors.SearchRulesDotDotDot)
@@ -73,7 +73,7 @@ public class FixCommonErrorsWindow : Window
         textBoxSearch.Classes.Add("text");
         textBoxSearch.VerticalAlignment = VerticalAlignment.Center;
         textBoxSearch.PlaceholderText = Se.Language.Tools.FixCommonErrors.SearchRulesDotDotDot;
-        textBoxSearch.Bind(IsVisibleProperty, new Binding(nameof(vm.Step1IsVisible)));
+        textBoxSearch.Bind(IsVisibleProperty, new Binding(nameof(vm.IsStepOne)));
         // Off by default (#12441) - keep it reachable here, next to the language it depends on,
         // instead of only in the OCR window where a Fix-common-errors user would never look.
         var switchGuessUnknownWords = EditorChrome.MakeSwitch(nameof(vm.TryToGuessUnknownWords), Se.Language.Ocr.TryToGuessUnknownWords);
@@ -86,10 +86,10 @@ public class FixCommonErrorsWindow : Window
             Children =
             {
                 switchGuessUnknownWords,
-                new TextBlock { Text = Se.Language.Ocr.TryToGuessUnknownWords, FontSize = 12.5, VerticalAlignment = VerticalAlignment.Center },
+                new TextBlock { Text = Se.Language.Ocr.TryToGuessUnknownWords, FontSize = EditorChrome.FieldFontSize, VerticalAlignment = VerticalAlignment.Center },
             },
         };
-        panelGuessUnknownWords.Bind(IsVisibleProperty, new Binding(nameof(vm.Step2IsVisible)));
+        panelGuessUnknownWords.Bind(IsVisibleProperty, new Binding("!" + nameof(vm.IsStepOne)));
 
         var comboLanguage = UiUtil.MakeComboBox(vm.Languages, vm, nameof(vm.SelectedLanguage))
             .WithAccessibleName(Se.Language.General.Language);
@@ -197,26 +197,26 @@ public class FixCommonErrorsWindow : Window
         rulesPanel.Add(rulesHeader, 0);
         rulesPanel.Add(EditorChrome.MakeListFrame(rulesGrid, clearListBackground: true), 1);
         var step1View = EditorChrome.MakePanel(rulesPanel);
-        step1View.Bind(IsVisibleProperty, new Binding(nameof(vm.Step1IsVisible)));
+        step1View.Bind(IsVisibleProperty, new Binding(nameof(vm.IsStepOne)));
 
         var step2Grid = MakeStep2Grid();
-        step2Grid.Bind(IsVisibleProperty, new Binding(nameof(_vm.Step2IsVisible)));
+        step2Grid.Bind(IsVisibleProperty, new Binding("!" + nameof(_vm.IsStepOne)));
 
         var buttonToApplyFixes = UiUtil.MakeButton(Se.Language.Tools.FixCommonErrors.GoToApplyFixes, vm.ToApplyFixesCommand)
             .WithIconRight("fa-solid fa-arrow-right")
-            .BindIsVisible(vm, nameof(vm.Step1IsVisible));
+            .BindIsVisible(vm, nameof(vm.IsStepOne));
         buttonToApplyFixes.Classes.Add("primary");
 
         var buttonBackToFixList = UiUtil.MakeButton(Se.Language.Tools.FixCommonErrors.BackToFixList, vm.BackToFixListCommand)
             .WithIconLeft("fa-solid fa-arrow-left")
-            .BindIsVisible(vm, nameof(vm.Step2IsVisible));
+            .BindIsVisible(vm, "!" + nameof(vm.IsStepOne));
 
         var buttonDone = UiUtil.MakeButton(Se.Language.General.Done, vm.OkCommand)
-            .BindIsVisible(vm, nameof(vm.Step2IsVisible));
+            .BindIsVisible(vm, "!" + nameof(vm.IsStepOne));
         buttonDone.Classes.Add("primary");
 
         var labelFixesApplied = EditorChrome.MakeBoundHint(nameof(vm.FixesAppliedText));
-        labelFixesApplied.FontSize = 12;
+        labelFixesApplied.FontSize = EditorChrome.FieldFontSize;
         labelFixesApplied.Bind(IsVisibleProperty, new Binding(nameof(vm.FixesAppliedText)) { Converter = StringConverters.IsNotNullOrEmpty });
 
         // Green check + "Nothing to fix" so an empty re-scan gives visible feedback; the counters
@@ -225,7 +225,7 @@ public class FixCommonErrorsWindow : Window
         var nothingToFixText = new TextBlock
         {
             Text = Se.Language.Tools.FixCommonErrors.NothingToFix,
-            FontSize = 12,
+            FontSize = EditorChrome.FieldFontSize,
             Foreground = nothingToFixBrush,
             VerticalAlignment = VerticalAlignment.Center,
         };
@@ -262,7 +262,7 @@ public class FixCommonErrorsWindow : Window
         };
         errorsFoundIcon.PointerPressed += (_, _) => vm.ShowLogCommand.Execute(null);
         var errorsFoundText = UiUtil.MakeLink(string.Empty, vm.ShowLogCommand);
-        errorsFoundText.FontSize = 12;
+        errorsFoundText.FontSize = EditorChrome.FieldFontSize;
         errorsFoundText.Foreground = errorsFoundBrush;
         errorsFoundText.Bind(TextBlock.TextProperty, new Binding(nameof(vm.ErrorsFoundText)));
         var errorsFoundPanel = new StackPanel
@@ -282,7 +282,7 @@ public class FixCommonErrorsWindow : Window
         // The log also holds what the applies changed, so it stays reachable when a subtitle has
         // no errors left - the warning above links to the same window when it does.
         var logLink = UiUtil.MakeLink(Se.Language.Tools.FixCommonErrors.Log, vm.ShowLogCommand);
-        logLink.FontSize = 12;
+        logLink.FontSize = EditorChrome.FieldFontSize;
         logLink.Bind(IsVisibleProperty, new Binding(nameof(vm.LogIsVisible)));
 
         // "Analyzing..." while a re-scan runs, so a scan that ends in the same state as it started
@@ -290,7 +290,7 @@ public class FixCommonErrorsWindow : Window
         var analysingText = new TextBlock
         {
             Text = Se.Language.Tools.FixCommonErrors.Analysing,
-            FontSize = 12,
+            FontSize = EditorChrome.FieldFontSize,
             Foreground = EditorChrome.DimTextBrush,
             VerticalAlignment = VerticalAlignment.Center,
         };
@@ -304,7 +304,7 @@ public class FixCommonErrorsWindow : Window
             VerticalAlignment = VerticalAlignment.Center,
             Children = { labelFixesApplied, nothingToFixPanel, errorsFoundPanel, logLink, analysingText },
         };
-        panelStep2Status.Bind(IsVisibleProperty, new Binding(nameof(vm.Step2IsVisible)));
+        panelStep2Status.Bind(IsVisibleProperty, new Binding("!" + nameof(vm.IsStepOne)));
 
         var buttonBar = EditorChrome.MakeButtonBar(panelStep2Status, buttonBackToFixList, UiUtil.MakeButtonCancel(vm.CancelCommand), buttonToApplyFixes, buttonDone);
 
@@ -331,7 +331,7 @@ public class FixCommonErrorsWindow : Window
         // the window) still lets the window's OnKeyDown fire, as key events bubble up. (#12029)
         void FocusStepButton()
         {
-            var step2 = vm.Step2IsVisible;
+            var step2 = !vm.IsStepOne;
             buttonToApplyFixes.IsDefault = !step2;
             buttonDone.IsDefault = false;
             if (_buttonApplySelectedFixes != null)
@@ -348,11 +348,11 @@ public class FixCommonErrorsWindow : Window
 
         vm.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName is nameof(vm.Step1IsVisible) or nameof(vm.Step2IsVisible))
+            if (e.PropertyName == nameof(vm.IsStepOne))
             {
                 FocusStepButton();
             }
-            else if (e.PropertyName == nameof(vm.FixesAppliedText) && vm.Step2IsVisible && !string.IsNullOrEmpty(vm.FixesAppliedText))
+            else if (e.PropertyName == nameof(vm.FixesAppliedText) && !vm.IsStepOne && !string.IsNullOrEmpty(vm.FixesAppliedText))
             {
                 // After "Apply selected fixes": if nothing is left to fix, move focus/default to
                 // "Done" so the next Return finishes; otherwise keep it on "Apply selected fixes"
@@ -536,7 +536,7 @@ public class FixCommonErrorsWindow : Window
         _buttonApplySelectedFixes.Margin = new Thickness(6, 0, 0, 0);
         _buttonApplySelectedFixes.MinHeight = 28;
         _buttonApplySelectedFixes.Padding = new Thickness(10, 4);
-        _buttonApplySelectedFixes.FontSize = 12.5;
+        _buttonApplySelectedFixes.FontSize = EditorChrome.FieldFontSize;
         _buttonApplySelectedFixes.VerticalAlignment = VerticalAlignment.Center;
 
         var fixesActions = new StackPanel
@@ -582,7 +582,7 @@ public class FixCommonErrorsWindow : Window
                 var toggle = new ToggleButton
                 {
                     Classes = { "chip" },
-                    FontSize = 12,
+                    FontSize = EditorChrome.FieldFontSize,
                     Padding = new Thickness(10, 3),
                     CornerRadius = new CornerRadius(12),
                     Command = _vm.SetFixFilterCommand,
@@ -726,6 +726,14 @@ public class FixCommonErrorsWindow : Window
         // Home/End jump to the first/last row even when focus is on the grid itself
         // (this replaces the hand-rolled tunnel handler the DataGrid needed).
         TableViewExtras.AttachListNavigation(dataGridSubtitles);
+
+        var flyout = new MenuFlyout();
+        dataGridSubtitles.ContextFlyout = flyout;
+        var deleteMenuItem = new MenuItem { Header = Se.Language.General.Delete, DataContext = _vm };
+        deleteMenuItem.Command = _vm.DeleteSelectedLinesCommand;
+        flyout.Items.Add(deleteMenuItem);
+        UiUtil.AttachMacContextFlyoutHandler(dataGridSubtitles);
+        dataGridSubtitles.KeyDown += (_, e) => _vm.GridSubtitlesKeyDown(e);
 
         var gridCurrentSubtbtitle = MakeStep2EditPanel();
 

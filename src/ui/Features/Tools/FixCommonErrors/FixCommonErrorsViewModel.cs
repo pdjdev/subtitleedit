@@ -14,13 +14,13 @@ using Nikse.SubtitleEdit.Logic;
 using Nikse.SubtitleEdit.Logic.Config;
 using Nikse.SubtitleEdit.Logic.Config.Language.Tools;
 using Nikse.SubtitleEdit.Logic.Dictionaries;
+using Nikse.SubtitleEdit.UiLogic.Ocr.FixEngine;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using Nikse.SubtitleEdit.UiLogic.Ocr.FixEngine;
 
 namespace Nikse.SubtitleEdit.Features.Tools.FixCommonErrors;
 
@@ -45,8 +45,7 @@ public partial class FixCommonErrorsViewModel : ObservableObject, IFixCallbacks
     [ObservableProperty] private SubtitleLineViewModel? _selectedParagraph;
     [ObservableProperty] private ObservableCollection<ProfileDisplayItem> _profiles;
     [ObservableProperty] private ProfileDisplayItem? _selectedProfile;
-    [ObservableProperty] private bool _step1IsVisible;
-    [ObservableProperty] private bool _step2IsVisible;
+    [ObservableProperty] private bool _isStepOne;
     [ObservableProperty] private bool _tryToGuessUnknownWords;
     [ObservableProperty] private string _step2Title;
     [ObservableProperty] private string _fixesAppliedText = string.Empty;
@@ -123,7 +122,7 @@ public partial class FixCommonErrorsViewModel : ObservableObject, IFixCallbacks
         ApplySelectedFixesText = Se.Language.Tools.FixCommonErrors.ApplySelectedFixes;
         Paragraphs = new ObservableCollection<SubtitleLineViewModel>();
         _language = Se.Language.Tools.FixCommonErrors;
-        Step1IsVisible = true;
+        IsStepOne = true;
         _subtitleFormat = new SubRip();
         Profiles = new ObservableCollection<ProfileDisplayItem>();
         Step2Title = Se.Language.Tools.FixCommonErrors.FixCommonOcrErrorsStep2;
@@ -259,8 +258,94 @@ public partial class FixCommonErrorsViewModel : ObservableObject, IFixCallbacks
     [RelayCommand]
     private void BackToFixList()
     {
-        Step2IsVisible = false;
-        Step1IsVisible = true;
+        IsStepOne = true;
+    }
+
+    [RelayCommand]
+    private async Task DeleteSelectedLines()
+    {
+        await DeleteSelectedItems();
+    }
+
+    private async Task DeleteSelectedItems()
+    {
+        var selectedItems = GetSelectedEditableSubtitles();
+        if (selectedItems.Count == 0 || Window == null)
+        {
+            return;
+        }
+
+        if (Se.Settings.General.PromptBeforeDelete)
+        {
+            var title = Se.Language.General.Delete;
+
+            var message = string.Format(Se.Language.General.DeleteXLinesPrompt, selectedItems.Count);
+            if (selectedItems.Count == 1)
+            {
+                var idx = Paragraphs.IndexOf(selectedItems[0]);
+                message = string.Format(Se.Language.General.DeleteLineXPrompt, idx + 1);
+            }
+
+            var answer = await MessageBox.Show(
+                Window,
+                title,
+                message,
+                MessageBoxButtons.YesNoCancel,
+                MessageBoxIcon.Question);
+
+            if (answer != MessageBoxResult.Yes)
+            {
+                return;
+            }
+        }
+
+        var firstIndex = Paragraphs.IndexOf(selectedItems[0]);
+        foreach (var item in selectedItems)
+        {
+            if (item.Paragraph != null)
+            {
+                FixedSubtitle.Paragraphs.Remove(item.Paragraph);
+            }
+        }
+
+        // Fixes and the grid find lines by number, so close the gap the deleted line left
+        FixedSubtitle.Renumber();
+        RefreshFixes();
+
+        // Keep the cursor where the deleted line was, so Delete can be pressed again
+        if (Paragraphs.Count > 0)
+        {
+            var row = Paragraphs[Math.Clamp(firstIndex, 0, Paragraphs.Count - 1)];
+            SelectedParagraph = row;
+            GridSubtitles.ScrollIntoView(row);
+            GridSubtitles.Focus();
+        }
+    }
+
+    /// <summary>
+    /// Delete in the preview grid - plus Cmd+Backspace on macOS, whose keyboards have no forward
+    /// Delete key (same keys as the main window's grid).
+    /// </summary>
+    internal void GridSubtitlesKeyDown(KeyEventArgs e)
+    {
+        var isDelete = e.Key == Key.Delete && e.KeyModifiers == KeyModifiers.None;
+        var isMacDelete = OperatingSystem.IsMacOS() && e.Key == Key.Back && e.KeyModifiers == KeyModifiers.Meta;
+        if (isDelete || isMacDelete)
+        {
+            e.Handled = true;
+            _ = DeleteSelectedItems();
+        }
+    }
+
+    private List<SubtitleLineViewModel> GetSelectedEditableSubtitles()
+    {
+        var selected = SelectedParagraph;
+        if (selected == null)
+        {
+            return [];
+        }
+
+        return new List<SubtitleLineViewModel>() { selected };
     }
 
     // Used when step 1 is skipped at startup - the window is not up yet, so there is nothing to flash on.
@@ -278,8 +363,7 @@ public partial class FixCommonErrorsViewModel : ObservableObject, IFixCallbacks
 
     private void EnterStep2()
     {
-        Step1IsVisible = false;
-        Step2IsVisible = true;
+        IsStepOne = false;
         _totalFixes = 0;
         _appliedLogEntries.Clear();
         FixesAppliedText = string.Empty;
@@ -560,7 +644,7 @@ public partial class FixCommonErrorsViewModel : ObservableObject, IFixCallbacks
         Se.Settings.Tools.FixCommonErrors.TryToGuessUnknownWords = value;
 
         // Re-scan so the fix list reflects the toggle right away; while step 1 is up there is no list yet.
-        if (Step2IsVisible)
+        if (!IsStepOne)
         {
             _ = RunScanWithFeedbackAsync(RefreshFixes);
         }
