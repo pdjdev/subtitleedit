@@ -3,7 +3,13 @@ name: Build macOS DMG
   push:
     branches:
     - build/osx
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Branch, tag, or commit to build (blank uses the selected workflow branch)'
+        required: false
+        default: ''
+        type: string
 permissions:
   contents: read
 env:
@@ -28,6 +34,8 @@ jobs:
           expected_arch: x86_64
     steps:
     - uses: actions/checkout@v5
+      with:
+        ref: ${{ inputs.ref || github.ref }}
     - name: Setup .NET
       uses: actions/setup-dotnet@v5
       with:
