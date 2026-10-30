@@ -4656,18 +4656,45 @@ public partial class MainViewModel :
     /// <summary>
     /// The second subtitle on the video timeline: its file times minus the video offset, the same
     /// split the main file gets on open (<see cref="SubtitleOpen"/>). Applied per push rather than
-    /// baked into <see cref="_subtitleSecondary"/>, so an offset change re-aligns it.
+    /// baked into <see cref="_subtitleSecondary"/>, so an offset change re-aligns it. A second file
+    /// already timed from zero is left as is (<see cref="SecondarySubtitleOffset"/>).
     /// </summary>
     private Subtitle? GetSecondaryPreviewSubtitle()
     {
-        if (_subtitleSecondary == null || Se.Settings.General.CurrentVideoOffsetInMs == 0)
+        var offsetMs = Se.Settings.General.CurrentVideoOffsetInMs;
+        if (_subtitleSecondary == null || offsetMs == 0)
+        {
+            return _subtitleSecondary;
+        }
+
+        var (windowStartMs, windowEndMs) = GetSecondaryOffsetReferenceWindow();
+        if (!SecondarySubtitleOffset.ShouldApply(_subtitleSecondary, offsetMs, windowStartMs, windowEndMs))
         {
             return _subtitleSecondary;
         }
 
         var shifted = new Subtitle(_subtitleSecondary);
-        shifted.AddTimeToAllParagraphs(TimeSpan.FromMilliseconds(-Se.Settings.General.CurrentVideoOffsetInMs));
+        shifted.AddTimeToAllParagraphs(TimeSpan.FromMilliseconds(-offsetMs));
         return shifted;
+    }
+
+    /// <summary>
+    /// The video timeline span a second subtitle should land in: the video when its duration is
+    /// known, else the main subtitle's span (already on the video timeline), else from zero on.
+    /// </summary>
+    private (double StartMs, double EndMs) GetSecondaryOffsetReferenceWindow()
+    {
+        if (_mediaInfo?.Duration is { } duration && duration.TotalMilliseconds > 0)
+        {
+            return (0, duration.TotalMilliseconds);
+        }
+
+        if (Subtitles.Count > 0)
+        {
+            return (Subtitles.Min(p => p.StartTime.TotalMilliseconds), Subtitles.Max(p => p.EndTime.TotalMilliseconds));
+        }
+
+        return (0, double.MaxValue);
     }
 
     [RelayCommand]
@@ -9964,9 +9991,12 @@ public partial class MainViewModel :
         if (viewModel.OkPressed)
         {
             var selectedFormat = viewModel.GetSelectedFormat();
-            if (selectedFormat != null && selectedFormat != SelectedSubtitleFormat)
+            if (selectedFormat != null && selectedFormat.Name != SelectedSubtitleFormat.Name)
             {
-                SetSubtitleFormat(selectedFormat);
+                // A pick here is the user's format change, the same as one in the toolbar combo:
+                // not SetSubtitleFormat, which skipped the conversion and left "Save as" on the
+                // default "Save as" format (.srt) instead of the picked one (.ssa).
+                SelectedSubtitleFormat = SubtitleFormats.FirstOrDefault(p => p.Name == selectedFormat.Name) ?? selectedFormat;
             }
         }
     }
@@ -16969,6 +16999,15 @@ public partial class MainViewModel :
     [RelayCommand]
     private void MoveEndXMsForward() => MoveEndByMs(GetMoveStartEndStepMs(), keepGapNextIfClose: false);
 
+    // Push variants (doom9 request): the step is the same, but running into the neighbour pushes
+    // its border along at the minimum gap instead of stopping. Only the directions that can
+    // collide get one - moving away from the neighbour is the plain shortcut.
+    [RelayCommand]
+    private void MoveStartXMsBackPushPrevious() => MoveStartByMs(-GetMoveStartEndStepMs(), keepGapPrevIfClose: false, pushPrevOnCollision: true);
+
+    [RelayCommand]
+    private void MoveEndXMsForwardPushNext() => MoveEndByMs(GetMoveStartEndStepMs(), keepGapNextIfClose: false, pushNextOnCollision: true);
+
     private static int GetMoveStartEndStepMs() => Math.Max(1, Se.Settings.General.MoveStartEndStepMs);
 
     // #14789: repeatable fixed-ms nudges for fixing progressive drift section by section.
@@ -17237,7 +17276,7 @@ public partial class MainViewModel :
     private void MoveStartByFrames(int frames, bool keepGapPrevIfClose) =>
         MoveStartByMs(FramesToMilliseconds(frames), keepGapPrevIfClose);
 
-    private void MoveStartByMs(int deltaMs, bool keepGapPrevIfClose)
+    private void MoveStartByMs(int deltaMs, bool keepGapPrevIfClose, bool pushPrevOnCollision = false)
     {
         var s = SelectedSubtitle;
         if (s == null || AreTimeCodesLocked)
@@ -17281,13 +17320,37 @@ public partial class MainViewModel :
             }
         }
 
+        // Push variant: unlike KeepGapPrev the previous end only moves when this start would get
+        // closer to it than the minimum gap (or the current gap, if that is already tighter -
+        // touching lines stay touching), and it never follows a start that moves forward again.
+        var pushPrev = false;
+        var newPrevEndMs = 0.0;
+        if (pushPrevOnCollision && deltaMs < 0 && prev != null
+            && prev.EndTime.TotalMilliseconds <= s.StartTime.TotalMilliseconds)
+        {
+            var pushGapMs = Math.Min(gapMs, s.StartTime.TotalMilliseconds - prev.EndTime.TotalMilliseconds);
+            if (newStartMs - pushGapMs < prev.EndTime.TotalMilliseconds)
+            {
+                // Push no further than the previous line's minimum duration.
+                newPrevEndMs = Math.Max(newStartMs - pushGapMs,
+                    prev.StartTime.TotalMilliseconds + Se.Settings.General.SubtitleMinimumDisplayMilliseconds);
+                newStartMs = newPrevEndMs + pushGapMs;
+                if (newStartMs >= s.StartTime.TotalMilliseconds)
+                {
+                    return;
+                }
+
+                pushPrev = true;
+            }
+        }
+
         // Moving the start back must not run into the previous line (issue #13999). SE 4 clamped
         // to "previous end + minimum gap" here; SE 5 checked only this line's own end, so repeated
         // presses walked straight through the neighbour. The KeepGapPrev variant is exempt: it
         // carries the previous line along, so there is nothing to run into. "Allow overlap (when
         // moving/resizing)" is the user saying they want to - the waveform drag reads it the same
         // way.
-        if (deltaMs < 0 && !prevIsClose && prev != null && !Se.Settings.Waveform.AllowOverlap)
+        if (deltaMs < 0 && !prevIsClose && !pushPrev && prev != null && !Se.Settings.Waveform.AllowOverlap)
         {
             var floorMs = prev.EndTime.TotalMilliseconds + gapMs;
             if (newStartMs < floorMs)
@@ -17321,6 +17384,10 @@ public partial class MainViewModel :
         {
             prev.EndTime = TimeSpanExtensions.FromMillisecondsWholeMilliseconds(newStartMs - prevGapMs);
         }
+        else if (pushPrev && prev != null)
+        {
+            prev.EndTime = TimeSpanExtensions.FromMillisecondsWholeMilliseconds(newPrevEndMs);
+        }
 
         _updateAudioVisualizer = true;
     }
@@ -17328,7 +17395,7 @@ public partial class MainViewModel :
     private void MoveEndByFrames(int frames, bool keepGapNextIfClose) =>
         MoveEndByMs(FramesToMilliseconds(frames), keepGapNextIfClose);
 
-    private void MoveEndByMs(int deltaMs, bool keepGapNextIfClose)
+    private void MoveEndByMs(int deltaMs, bool keepGapNextIfClose, bool pushNextOnCollision = false)
     {
         var s = SelectedSubtitle;
         if (s == null || AreTimeCodesLocked)
@@ -17368,9 +17435,30 @@ public partial class MainViewModel :
             }
         }
 
+        // Push variant: symmetric counterpart of the one in MoveStartByMs.
+        var pushNext = false;
+        var newNextStartMs = 0.0;
+        if (pushNextOnCollision && deltaMs > 0 && next != null
+            && s.EndTime.TotalMilliseconds <= next.StartTime.TotalMilliseconds)
+        {
+            var pushGapMs = Math.Min(gapMs, next.StartTime.TotalMilliseconds - s.EndTime.TotalMilliseconds);
+            if (newEndMs + pushGapMs > next.StartTime.TotalMilliseconds)
+            {
+                newNextStartMs = Math.Min(newEndMs + pushGapMs,
+                    next.EndTime.TotalMilliseconds - Se.Settings.General.SubtitleMinimumDisplayMilliseconds);
+                newEndMs = newNextStartMs - pushGapMs;
+                if (newEndMs <= s.EndTime.TotalMilliseconds)
+                {
+                    return;
+                }
+
+                pushNext = true;
+            }
+        }
+
         // Symmetric counterpart of the clamp in MoveStartByFrames (issue #13999): moving the end
         // forward must not run into the next line.
-        if (deltaMs > 0 && !nextIsClose && next != null && !Se.Settings.Waveform.AllowOverlap)
+        if (deltaMs > 0 && !nextIsClose && !pushNext && next != null && !Se.Settings.Waveform.AllowOverlap)
         {
             var ceilingMs = next.StartTime.TotalMilliseconds - gapMs;
             if (newEndMs > ceilingMs)
@@ -17389,6 +17477,10 @@ public partial class MainViewModel :
         if (nextIsClose && next != null)
         {
             next.SetStartTimeOnly(TimeSpanExtensions.FromMillisecondsWholeMilliseconds(newEndMs + nextGapMs));
+        }
+        else if (pushNext && next != null)
+        {
+            next.SetStartTimeOnly(TimeSpanExtensions.FromMillisecondsWholeMilliseconds(newNextStartMs));
         }
 
         _updateAudioVisualizer = true;
@@ -24574,6 +24666,16 @@ public partial class MainViewModel :
     // (#12027). null means "resync to the player on the next move".
     private double? _relativeSeekTargetSeconds;
 
+    /// <summary>
+    /// How far the player may lag the tracked target before a relative step resyncs to it.
+    /// While the previous step's seek is still in flight (slow exact seeks in long-GOP video),
+    /// the player still reports the old position, one full step behind the target. A flat 0.5 s
+    /// guard dropped that step for 500 ms steps (float rounding at the limit) and for every
+    /// longer step, so quick presses came out uneven (#16469). Every other position change
+    /// clears the tracker, so the wider guard only applies to chained relative steps.
+    /// </summary>
+    internal static double RelativeSeekResyncSeconds(int ms) => 0.5 + Math.Abs(ms) / 1000.0;
+
     private void MoveVideoPositionMs(int ms, bool pause = false)
     {
         var vp = GetVideoPlayerControl();
@@ -24595,12 +24697,11 @@ public partial class MainViewModel :
         var actual = vp.Position;
 
         // Keep accumulating from the tracked target only while it still matches where
-        // the player actually is (within half a second) and playback is paused. If the
-        // user played, clicked the waveform, or jumped to a cue, the player diverges and
-        // we resync to its real position.
+        // the player actually is and playback is paused. If the user played, clicked the
+        // waveform, or jumped to a cue, the player diverges and we resync to its real position.
         var baseSeconds = !wasPlaying
             && _relativeSeekTargetSeconds is double tracked
-            && Math.Abs(tracked - actual) < 0.5
+            && Math.Abs(tracked - actual) < RelativeSeekResyncSeconds(ms)
                 ? tracked
                 : actual;
 
