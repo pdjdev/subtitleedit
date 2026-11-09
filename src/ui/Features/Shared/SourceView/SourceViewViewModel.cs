@@ -192,6 +192,8 @@ public partial class SourceViewViewModel : ObservableObject, IClosingCleanup
             VerticalAlignment = VerticalAlignment.Stretch,
             HorizontalAlignment = HorizontalAlignment.Stretch,
             ShowLineNumbers = true,
+            CornerRadius = new CornerRadius(EditorChrome.ListFrameContentRadius),
+            ClipToBounds = true,
             SourceHighlighter = SourceSyntaxHighlighterFactory.ForFormat(text, subtitleFormat),
             Text = text,
         };
@@ -888,6 +890,11 @@ public partial class SourceViewViewModel : ObservableObject, IClosingCleanup
             case Key.G when commandModifier:
                 e.Handled = true;
                 _ = GoToLine();
+                break;
+
+            case Key.Enter when commandModifier:
+                e.Handled = true;
+                _ = Ok();
                 break;
 
             case Key.F3:

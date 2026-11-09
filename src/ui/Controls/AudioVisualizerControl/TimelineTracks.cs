@@ -650,14 +650,17 @@ public class TimelineTracks : Control, IDisposable
             }
         }
 
-        foreach (var shotChange in source.ShotChanges)
+        // Sorted (see AudioVisualizer.ShotChanges), and this runs per frame.
+        var shotChanges = source.ShotChanges;
+        var firstShotChange = shotChanges.BinarySearch(startSeconds);
+        if (firstShotChange < 0)
         {
-            if (shotChange < startSeconds || shotChange > endSeconds)
-            {
-                continue;
-            }
+            firstShotChange = ~firstShotChange;
+        }
 
-            var x = Math.Round((shotChange - startSeconds) * pixelsPerSecond);
+        for (var i = firstShotChange; i < shotChanges.Count && shotChanges[i] <= endSeconds; i++)
+        {
+            var x = Math.Round((shotChanges[i] - startSeconds) * pixelsPerSecond);
             context.DrawLine(_shotChangePen, new Point(x, row.Y), new Point(x, row.Bottom));
         }
     }
@@ -699,17 +702,6 @@ public class TimelineTracks : Control, IDisposable
             }
         }
 
-        // The original row is drawn from all rows (display-only reference rows included), and
-        // the selection is not culled by the translation's times, which may be off screen.
-        _selectedIds.Clear();
-        if (selected != null)
-        {
-            foreach (var paragraph in selected)
-            {
-                _selectedIds.Add(paragraph.Id);
-            }
-        }
-
         foreach (var paragraph in _paragraphs)
         {
             var x1 = (paragraph.StartTime.TotalSeconds - startSeconds) * pixelsPerSecond;
@@ -725,6 +717,18 @@ public class TimelineTracks : Control, IDisposable
         if (originalTrack < 0 || rows == null)
         {
             return;
+        }
+
+        // The original row is drawn from all rows (display-only reference rows included), and
+        // the selection is not culled by the translation's times, which may be off screen.
+        // Only built here: hashing a "select all" per frame is a waste without an original row.
+        _selectedIds.Clear();
+        if (selected != null)
+        {
+            foreach (var paragraph in selected)
+            {
+                _selectedIds.Add(paragraph.Id);
+            }
         }
 
         var readOnlyTimeCodes = GetReadOnlyOriginalTimeCodes?.Invoke();
@@ -956,20 +960,11 @@ public class TimelineTracks : Control, IDisposable
     // The waveform drags the translation's time codes; the original row is dragged here, so both
     // can be edited side by side.
 
-    private enum DragEdge
-    {
-        Start,
-        End,
-        Move,
-    }
-
-    private const double EdgeGrabPixels = 6;
-    private static readonly TimeSpan MinDragDuration = TimeSpan.FromMilliseconds(100);
     private static readonly Cursor ResizeCursor = new(StandardCursorType.SizeWestEast);
     private static readonly Cursor MoveCursor = new(StandardCursorType.Hand);
 
     private SubtitleLineViewModel? _dragRow;
-    private DragEdge _dragEdge;
+    private OriginalDragEdge _dragEdge;
     private double _dragPressX;
     private TimeSpan _dragStart;
     private TimeSpan _dragEnd;
@@ -986,9 +981,9 @@ public class TimelineTracks : Control, IDisposable
     }
 
     /// <summary>The original block at a point, and which part of it.</summary>
-    private SubtitleLineViewModel? HitTestOriginalBlock(Point point, int track, out DragEdge edge)
+    private SubtitleLineViewModel? HitTestOriginalBlock(Point point, int track, out OriginalDragEdge edge)
     {
-        edge = DragEdge.Move;
+        edge = OriginalDragEdge.Move;
         var rows = GetAllParagraphs?.Invoke();
         var source = _source;
         if (rows == null || source == null || !TryGetSeconds(point.X, out var seconds))
@@ -996,52 +991,8 @@ public class TimelineTracks : Control, IDisposable
             return null;
         }
 
-        var tolerance = EdgeGrabPixels / (source.SampleRate * source.ZoomFactor);
-        SubtitleLineViewModel? best = null;
-        var bestDistance = double.MaxValue;
-        foreach (var row in rows)
-        {
-            if (!RowHasOriginalLine(row))
-            {
-                continue;
-            }
-
-            var startSeconds = row.EffectiveOriginalStartTime.TotalSeconds;
-            var endSeconds = row.EffectiveOriginalEndTime.TotalSeconds;
-            if (seconds < startSeconds - tolerance || seconds > endSeconds + tolerance)
-            {
-                continue;
-            }
-
-            var toStart = Math.Abs(seconds - startSeconds);
-            var toEnd = Math.Abs(seconds - endSeconds);
-            DragEdge rowEdge;
-            double distance;
-            if (toStart <= tolerance && toStart <= toEnd)
-            {
-                rowEdge = DragEdge.Start;
-                distance = toStart;
-            }
-            else if (toEnd <= tolerance)
-            {
-                rowEdge = DragEdge.End;
-                distance = toEnd;
-            }
-            else
-            {
-                rowEdge = DragEdge.Move;
-                distance = tolerance;
-            }
-
-            if (distance < bestDistance)
-            {
-                best = row;
-                edge = rowEdge;
-                bestDistance = distance;
-            }
-        }
-
-        return best;
+        var tolerance = OriginalTimeCodeDrag.EdgeGrabPixels / (source.SampleRate * source.ZoomFactor);
+        return OriginalTimeCodeDrag.HitTest(rows, RowHasOriginalLine, seconds, tolerance, out edge);
     }
 
     private void ApplyDrag(double x)
@@ -1054,27 +1005,7 @@ public class TimelineTracks : Control, IDisposable
         }
 
         var delta = TimeSpan.FromSeconds((x - _dragPressX) / (source.SampleRate * source.ZoomFactor));
-        var start = _dragStart;
-        var end = _dragEnd;
-        switch (_dragEdge)
-        {
-            case DragEdge.Start:
-                start = TimeSpan.FromTicks(Math.Max(0, Math.Min((_dragStart + delta).Ticks, (_dragEnd - MinDragDuration).Ticks)));
-                break;
-            case DragEdge.End:
-                end = TimeSpan.FromTicks(Math.Max((_dragEnd + delta).Ticks, (_dragStart + MinDragDuration).Ticks));
-                break;
-            default:
-                if (_dragStart + delta < TimeSpan.Zero)
-                {
-                    delta = -_dragStart;
-                }
-
-                start = _dragStart + delta;
-                end = _dragEnd + delta;
-                break;
-        }
-
+        var (start, end) = OriginalTimeCodeDrag.Apply(_dragStart, _dragEnd, delta, _dragEdge);
         SetOriginalTimeCodes?.Invoke(row, start, end);
         InvalidateVisual();
     }
@@ -1121,7 +1052,7 @@ public class TimelineTracks : Control, IDisposable
         var track = GetTrackIndexAt(point.Y);
         if (IsDraggableOriginalTrack(track) && HitTestOriginalBlock(point, track, out var edge) != null)
         {
-            Cursor = edge == DragEdge.Move ? MoveCursor : ResizeCursor;
+            Cursor = edge == OriginalDragEdge.Move ? MoveCursor : ResizeCursor;
             return;
         }
 

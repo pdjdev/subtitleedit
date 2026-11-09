@@ -1,4 +1,6 @@
 using Avalonia.Controls;
+using Avalonia.Threading;
+using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Nikse.SubtitleEdit.Core.Common;
 using Nikse.SubtitleEdit.Logic.Config;
@@ -17,6 +19,59 @@ public partial class MainViewModel
     public bool CanEditOriginalTimeCodes => CanEditOriginal && _subtitleOriginal is { Paragraphs.Count: > 0 };
 
     public bool IsOriginalLockedToTranslation => Se.Settings.General.LockOriginalToTranslation;
+
+    /// <summary>
+    /// The waveform's A/B switch (#16354): true while the waveform edits the original's own time
+    /// codes instead of the working subtitle's (see AudioVisualizer.EditOriginalTimeCodes). Only
+    /// ever true with an editable original open; closing the original or making it read-only
+    /// switches back.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isWaveformEditingOriginal;
+
+    partial void OnIsWaveformEditingOriginalChanged(bool value)
+    {
+        if (value && !CanEditOriginalTimeCodes)
+        {
+            // Turned on (toolbar button, menu or shortcut) with no editable original: say how to
+            // get one, and switch back - after this change notification has run its course, so
+            // the toggle button that set it sees the reset.
+            if (ShowColumnOriginalText && _subtitleOriginal is { Paragraphs.Count: > 0 })
+            {
+                ShowStatus(Se.Language.Waveform.EditOriginalTimingReadOnly, 6000);
+            }
+
+            Dispatcher.UIThread.Post(() => IsWaveformEditingOriginal = false);
+            return;
+        }
+
+        var av = AudioVisualizer;
+        if (av != null)
+        {
+            av.EditOriginalTimeCodes = value;
+            UpdateWaveformOriginalSubtitleCues(av);
+            av.InvalidateVisual();
+        }
+    }
+
+    partial void OnIsOriginalReadOnlyChanged(bool value)
+    {
+        if (value)
+        {
+            IsWaveformEditingOriginal = false;
+        }
+    }
+
+    /// <summary>
+    /// Flips the waveform between editing the working subtitle and editing the original (the
+    /// shortcut; the toolbar button and the context menu item bind the property directly).
+    /// </summary>
+    [RelayCommand]
+    private void ToggleWaveformEditOriginal()
+    {
+        _shortcutManager.ClearKeys();
+        IsWaveformEditingOriginal = !IsWaveformEditingOriginal;
+    }
 
     [RelayCommand]
     private void ToggleLockOriginalToTranslation()
@@ -91,14 +146,22 @@ public partial class MainViewModel
         }
     }
 
+    // Same reasoning as the 500 ms look at the rows in TimelineTracks: nothing announces a change
+    // to the original, so it is looked at again now and then instead of per frame.
+    private const int ReadOnlyOriginalTimeCodesMaxAgeMs = 250;
+
     private readonly Dictionary<Guid, (TimeSpan Start, TimeSpan End)> _readOnlyOriginalTimeCodes = new();
+    private Subtitle? _readOnlyOriginalTimeCodesSource;
+    private int _readOnlyOriginalTimeCodesCount;
+    private long _readOnlyOriginalTimeCodesBuiltMs;
 
     /// <summary>
     /// The read-only original's own time codes by line id, or null when the original is editable.
     /// The rows' original time codes follow the translation as it is retimed (with "Lock original
     /// to translation" on, or when a line shares its row's times), but a read-only original never
-    /// moves. Rebuilt into one reused dictionary on each call: the original's lines can be replaced,
-    /// and one pass over them is cheap.
+    /// moves. Kept in one reused dictionary: the timeline asks on every frame, while the original's
+    /// lines are rarely replaced - a pass over them per frame was thousands of inserts 60 times a
+    /// second. A new original or line count rebuilds at once, anything else within the max age.
     /// </summary>
     internal IReadOnlyDictionary<Guid, (TimeSpan Start, TimeSpan End)>? GetReadOnlyOriginalTimeCodes()
     {
@@ -107,6 +170,17 @@ public partial class MainViewModel
             return null;
         }
 
+        var now = Environment.TickCount64;
+        if (ReferenceEquals(_readOnlyOriginalTimeCodesSource, _subtitleOriginal) &&
+            _readOnlyOriginalTimeCodesCount == _subtitleOriginal.Paragraphs.Count &&
+            now - _readOnlyOriginalTimeCodesBuiltMs < ReadOnlyOriginalTimeCodesMaxAgeMs)
+        {
+            return _readOnlyOriginalTimeCodes;
+        }
+
+        _readOnlyOriginalTimeCodesSource = _subtitleOriginal;
+        _readOnlyOriginalTimeCodesCount = _subtitleOriginal.Paragraphs.Count;
+        _readOnlyOriginalTimeCodesBuiltMs = now;
         _readOnlyOriginalTimeCodes.Clear();
         foreach (var p in _subtitleOriginal.Paragraphs)
         {
